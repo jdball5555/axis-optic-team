@@ -20,7 +20,11 @@ TrainingStep? trainingStepFor(ScheduleConfig config, int priorDays) {
 /// Training-flow steps (indexes) someone still has to do, in order: the
 /// steps not in [done], minus one for each of the [workedSince] days they've
 /// worked since [done] was last reviewed.
-List<int> remainingTrainingSteps(int stepCount, Set<int> done, int workedSince) => [
+List<int> remainingTrainingSteps(
+  int stepCount,
+  Set<int> done,
+  int workedSince,
+) => [
   for (var i = 0; i < stepCount; i++)
     if (!done.contains(i)) i,
 ].skip(math.max(0, workedSince)).toList();
@@ -78,9 +82,7 @@ int onPositionAt(
   int minute, {
   String? ignoreShiftId,
 }) => day.shifts
-    .where(
-      (s) => s.id != ignoreShiftId && positionAt(s, minute) == positionId,
-    )
+    .where((s) => s.id != ignoreShiftId && positionAt(s, minute) == positionId)
     .length;
 
 /// Whether all of [shift] can go on [position] without anyone else on it at
@@ -88,8 +90,7 @@ int onPositionAt(
 bool fitsPosition(ScheduleDay day, Shift shift, ShiftPosition position) {
   for (final p in shift.workPieces) {
     for (var t = p.start; t < p.end; t += kScheduleStep) {
-      if (onPositionAt(day, position.id, t, ignoreShiftId: shift.id) >=
-          1) {
+      if (onPositionAt(day, position.id, t, ignoreShiftId: shift.id) >= 1) {
         return false;
       }
     }
@@ -98,29 +99,32 @@ bool fitsPosition(ScheduleDay day, Shift shift, ShiftPosition position) {
 }
 
 /// Puts a whole shift on one position (null takes it off positions).
-ScheduleDay assignPosition(ScheduleDay day, String shiftId, String? positionId) =>
-    day.copyWith(
-      shifts: [
-        for (final s in day.shifts)
-          if (s.id != shiftId)
-            s
-          else
-            s.copyWith(
-              positions: positionId == null
-                  ? const []
-                  : [
-                      for (final w in mergeWindows(
-                        s.workPieces.map((p) => TimeWindow(p.start, p.end)),
-                      ))
-                        PositionSegment(
-                          positionId: positionId,
-                          start: w.start,
-                          end: w.end,
-                        ),
-                    ],
-            ),
-      ],
-    );
+ScheduleDay assignPosition(
+  ScheduleDay day,
+  String shiftId,
+  String? positionId,
+) => day.copyWith(
+  shifts: [
+    for (final s in day.shifts)
+      if (s.id != shiftId)
+        s
+      else
+        s.copyWith(
+          positions: positionId == null
+              ? const []
+              : [
+                  for (final w in mergeWindows(
+                    s.workPieces.map((p) => TimeWindow(p.start, p.end)),
+                  ))
+                    PositionSegment(
+                      positionId: positionId,
+                      start: w.start,
+                      end: w.end,
+                    ),
+                ],
+        ),
+  ],
+);
 
 /// Deploys the whole day by priority. Every position is one seat,
 /// highest-priority position first. At each moment the N people
@@ -157,7 +161,11 @@ ScheduleDay deployPositions(
       );
     } else {
       list.add(
-        PositionSegment(positionId: positionId, start: t, end: t + kScheduleStep),
+        PositionSegment(
+          positionId: positionId,
+          start: t,
+          end: t + kScheduleStep,
+        ),
       );
     }
   }
@@ -233,7 +241,9 @@ ScheduleDay deployPositions(
 
 /// "Register 6a – 11a, Drive-thru 11a – 3p".
 String positionsSummary(Shift shift, ShiftConfig config) => [
-  for (final p in [...shift.positions]..sort((a, b) => a.start.compareTo(b.start)))
+  for (final p in [
+    ...shift.positions,
+  ]..sort((a, b) => a.start.compareTo(b.start)))
     if (config.positionById(p.positionId) case final pos?)
       '${pos.name} ${formatRange(p.start, p.end)}',
 ].join(', ');
@@ -305,7 +315,9 @@ List<PositionSegment> _joinSegments(List<PositionSegment> list) {
   for (final p in sorted) {
     if (p.minutes <= 0) continue;
     final last = out.isEmpty ? null : out.last;
-    if (last != null && last.positionId == p.positionId && last.end >= p.start) {
+    if (last != null &&
+        last.positionId == p.positionId &&
+        last.end >= p.start) {
       out[out.length - 1] = PositionSegment(
         positionId: p.positionId,
         start: last.start,
@@ -328,8 +340,7 @@ bool fitsPositionFrom(
 ) {
   for (final p in shift.workPieces) {
     for (var t = math.max(p.start, from); t < p.end; t += kScheduleStep) {
-      if (onPositionAt(day, position.id, t, ignoreShiftId: shift.id) >=
-          1) {
+      if (onPositionAt(day, position.id, t, ignoreShiftId: shift.id) >= 1) {
         return false;
       }
     }
@@ -351,7 +362,10 @@ typedef BoardDay = ({ScheduleDay day, Map<String, String> origin});
 BoardDay mergeBoardDay(String date, Map<String, ScheduleDay> bySchedule) {
   if (bySchedule.length == 1) {
     final e = bySchedule.entries.first;
-    return (day: e.value, origin: {for (final s in e.value.shifts) s.id: e.key});
+    return (
+      day: e.value,
+      origin: {for (final s in e.value.shifts) s.id: e.key},
+    );
   }
   String tag(String sid, String rowId) => '$sid::$rowId';
   final origin = <String, String>{};
@@ -365,12 +379,17 @@ BoardDay mergeBoardDay(String date, Map<String, ScheduleDay> bySchedule) {
       origin[s.id] = e.key;
       shifts.add(
         s.copyWith(
-          pieces: [for (final p in s.pieces) p.copyWith(rowId: tag(e.key, p.rowId))],
+          pieces: [
+            for (final p in s.pieces) p.copyWith(rowId: tag(e.key, p.rowId)),
+          ],
         ),
       );
     }
   }
-  return (day: ScheduleDay(date: date, rows: rows, shifts: shifts), origin: origin);
+  return (
+    day: ScheduleDay(date: date, rows: rows, shifts: shifts),
+    origin: origin,
+  );
 }
 
 /// Splits a board's [merged] day back into its schedules' days ([sources] =

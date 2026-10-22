@@ -27,10 +27,24 @@ class _MySchedulePageState extends ConsumerState<MyScheduleMobilePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Opened from a Home shortcut: that part of the tab.
+    final request = ref.watch(scheduleSectionRequestProvider);
+    if (request != null) {
+      _view = _ScheduleView
+          .values[request.clamp(0, _ScheduleView.values.length - 1)];
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted)
+          ref.read(scheduleSectionRequestProvider.notifier).state = null;
+      });
+    }
     final access = ref.watch(mobileAccessProvider);
     final storeId = ref.watch(currentStoreIdProvider);
-    final member = access.member;
-    if (!access.mySchedule || storeId == null || member?.id == null) {
+    // A leader viewing as a team member sees a sample schedule.
+    final preview = ref.watch(schedulePreviewProvider);
+    final member = preview?.member ?? access.member;
+    if ((preview == null && !access.mySchedule) ||
+        storeId == null ||
+        member?.id == null) {
       return MPage(
         title: 'Schedule',
         children: [
@@ -77,7 +91,10 @@ class _MySchedulePageState extends ConsumerState<MyScheduleMobilePage> {
             storeId: storeId,
             member: member!,
           ),
-          _ScheduleView.timeOff => _TimeOffView(storeId: storeId, member: member!),
+          _ScheduleView.timeOff => _TimeOffView(
+            storeId: storeId,
+            member: member!,
+          ),
         },
       ],
     );
@@ -113,13 +130,16 @@ class _ShiftsWeek extends ConsumerWidget {
       weekStartFor(DateTime.now(), config.weekStart),
       7 * weekOffset,
     );
-    final async = ref.watch(
-      postedWeekProvider((
-        storeId: storeId,
-        weekStart: dateKey(weekStart),
-        boards: boardsKey(config),
-      )),
-    );
+    final preview = ref.watch(schedulePreviewProvider);
+    final async = preview != null
+        ? AsyncValue.data(preview.shiftsFor(weekStart))
+        : ref.watch(
+            postedWeekProvider((
+              storeId: storeId,
+              weekStart: dateKey(weekStart),
+              boards: boardsKey(config),
+            )),
+          );
     final id = member.id!;
     final mine = (async.valueOrNull ?? const <RosterEntry>[])
         .where((e) => e.userId == id)
@@ -133,6 +153,7 @@ class _ShiftsWeek extends ConsumerWidget {
     }
     final hours = mine.fold<double>(0, (a, e) => a + e.hours);
     final timeOff =
+        preview?.timeOff ??
         ref
             .watch(memberTimeOffProvider((storeId: storeId, memberId: id)))
             .valueOrNull ??
@@ -148,53 +169,54 @@ class _ShiftsWeek extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Week picker.
-        Row(
-          children: [
-            _RoundIcon(icon: Icons.chevron_left, onTap: () => onWeek(-1)),
-            Expanded(
-              child: GestureDetector(
-                onTap: weekOffset == 0 ? null : onThisWeek,
-                child: Column(
-                  children: [
-                    Text(
-                      weekRange(weekStart),
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: c.title,
+        // Week picker, with the week's hours and shifts in one line.
+        MCard(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Row(
+            children: [
+              _RoundIcon(icon: Icons.chevron_left, onTap: () => onWeek(-1)),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: weekOffset == 0 ? null : onThisWeek,
+                  child: Column(
+                    children: [
+                      Text(
+                        weekRange(weekStart),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: c.title,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      weekOffset == 0
-                          ? 'This week'
-                          : weekOffset == 1
-                          ? 'Next week'
-                          : weekOffset == -1
-                          ? 'Last week'
-                          : 'Tap for this week',
-                      style: TextStyle(fontSize: 12.5, color: c.muted),
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      Text(
+                        [
+                          weekOffset == 0
+                              ? 'This week'
+                              : weekOffset == 1
+                              ? 'Next week'
+                              : weekOffset == -1
+                              ? 'Last week'
+                              : 'Tap for this week',
+                          '${formatHours(hours)} hrs',
+                          '${byDay.length} ${byDay.length == 1 ? 'shift' : 'shifts'}',
+                        ].join(' · '),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: c.muted,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            _RoundIcon(icon: Icons.chevron_right, onTap: () => onWeek(1)),
-          ],
+              _RoundIcon(icon: Icons.chevron_right, onTap: () => onWeek(1)),
+            ],
+          ),
         ),
-        const SizedBox(height: 14),
-        MStatGrid(
-          children: [
-            MStat(label: 'Hours', value: formatHours(hours), icon: Icons.schedule),
-            MStat(
-              label: 'Shifts',
-              value: '${byDay.length}',
-              icon: Icons.event_available_outlined,
-            ),
-          ],
-        ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 12),
         if (async.isLoading && !async.hasValue)
           const Padding(
             padding: EdgeInsets.all(32),
@@ -246,13 +268,13 @@ class _RoundIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = MColors(context);
     return Material(
-      color: c.card,
-      shape: CircleBorder(side: BorderSide(color: c.line.withValues(alpha: 0.8))),
+      color: c.raised,
+      shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(9),
+          padding: const EdgeInsets.all(8),
           child: Icon(icon, size: 22, color: c.text),
         ),
       ),
@@ -280,23 +302,18 @@ class _DayRow extends StatelessWidget {
     final c = MColors(context);
     final working = entries.isNotEmpty;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Date block.
+          // Date block (today solid inverse).
           Container(
-            width: 54,
-            padding: const EdgeInsets.symmetric(vertical: 10),
+            width: 50,
+            padding: const EdgeInsets.symmetric(vertical: 7),
             decoration: BoxDecoration(
-              color: isToday ? AppTheme.tint(AppTheme.accent) : c.card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isToday
-                    ? AppTheme.edge(AppTheme.accent)
-                    : c.line.withValues(alpha: 0.7),
-                width: isToday ? 1.4 : 1,
-              ),
+              color: isToday ? c.inverse : c.card,
+              borderRadius: BorderRadius.circular(12),
+              border: isToday ? null : Border.all(color: c.line),
             ),
             child: Column(
               children: [
@@ -306,16 +323,18 @@ class _DayRow extends StatelessWidget {
                     fontSize: 10.5,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1,
-                    color: isToday ? AppTheme.onTint(AppTheme.accent) : c.muted,
+                    color: isToday
+                        ? c.onInverse.withValues(alpha: 0.65)
+                        : c.muted,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 1),
                 Text(
                   '${day.day}',
                   style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: isToday ? AppTheme.onTint(AppTheme.accent) : c.title,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: isToday ? c.onInverse : c.title,
                   ),
                 ),
               ],
@@ -325,7 +344,7 @@ class _DayRow extends StatelessWidget {
           Expanded(
             child: !working
                 ? Container(
-                    constraints: const BoxConstraints(minHeight: 62),
+                    constraints: const BoxConstraints(minHeight: 50),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     alignment: Alignment.centerLeft,
                     decoration: BoxDecoration(
@@ -335,7 +354,11 @@ class _DayRow extends StatelessWidget {
                     child: timeOff != null
                         ? Row(
                             children: [
-                              MPill('Time off', color: AppTheme.green, icon: Icons.beach_access_outlined),
+                              MPill(
+                                'Time off',
+                                color: AppTheme.green,
+                                icon: Icons.beach_access_outlined,
+                              ),
                               if (timeOff!.reason.isNotEmpty) ...[
                                 const SizedBox(width: 8),
                                 Expanded(
@@ -343,7 +366,10 @@ class _DayRow extends StatelessWidget {
                                     timeOff!.reason,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontSize: 13, color: c.muted),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: c.muted,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -362,7 +388,9 @@ class _DayRow extends StatelessWidget {
                     children: [
                       for (final e in entries)
                         Padding(
-                          padding: EdgeInsets.only(bottom: e == entries.last ? 0 : 8),
+                          padding: EdgeInsets.only(
+                            bottom: e == entries.last ? 0 : 8,
+                          ),
                           child: _ShiftTile(entry: e, users: users),
                         ),
                     ],
@@ -382,70 +410,67 @@ class _ShiftTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = MColors(context);
-    final accent = entry.isAdmin ? AppTheme.purple : AppTheme.accent;
+    final accent = entry.isAdmin ? AppTheme.purple : MBrand.red;
     final partner = entry.trainingWith ?? entry.traineeId;
     return MCard(
       padding: EdgeInsets.zero,
       radius: 14,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 4, color: accent),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            formatRange(entry.start, entry.end, compact: false),
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: c.title,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '${formatHours(entry.hours)}h',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: c.muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (entry.area.isNotEmpty || entry.isAdmin || partner != null) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          if (entry.isAdmin)
-                            MPill('Admin time', color: AppTheme.purple)
-                          else if (entry.area.isNotEmpty)
-                            MPill(entry.area, color: AppTheme.blue),
-                          if (partner != null)
-                            MPill(
-                              entry.trainingWith != null
-                                  ? 'Training with ${firstNameOf(users[partner])}'
-                                  : 'Training ${firstNameOf(users[partner])}',
-                              color: AppTheme.teal,
-                              icon: Icons.school,
-                            ),
-                        ],
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: accent, width: 4)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      formatRange(entry.start, entry.end, compact: false),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: c.title,
                       ),
-                    ],
+                    ),
+                  ),
+                  Text(
+                    '${formatHours(entry.hours)}h',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: c.muted,
+                    ),
+                  ),
+                ],
+              ),
+              if (entry.area.isNotEmpty ||
+                  entry.isAdmin ||
+                  partner != null) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    if (entry.isAdmin)
+                      MPill('Admin time', color: AppTheme.purple)
+                    else if (entry.area.isNotEmpty)
+                      MPill(entry.area, color: AppTheme.blue),
+                    if (partner != null)
+                      MPill(
+                        entry.trainingWith != null
+                            ? 'Training with ${firstNameOf(users[partner])}'
+                            : 'Training ${firstNameOf(users[partner])}',
+                        color: AppTheme.teal,
+                        icon: Icons.school,
+                      ),
                   ],
                 ),
-              ),
-            ),
-          ],
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -482,7 +507,11 @@ class _AvailabilityView extends StatelessWidget {
                     child: Text(
                       'You haven\'t set your availability yet. Add it so the '
                       'schedule only puts you on when you can work.',
-                      style: TextStyle(fontSize: 13.5, height: 1.4, color: c.text),
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        height: 1.4,
+                        color: c.text,
+                      ),
                     ),
                   ),
                 ],
@@ -587,8 +616,7 @@ class AvailabilityEditorPage extends StatefulWidget {
 
 class _AvailabilityEditorPageState extends State<AvailabilityEditorPage> {
   late final Map<String, List<TimeWindow>> _days = {
-    for (final d in availabilityDays)
-      d: [...?widget.initial?[d]],
+    for (final d in availabilityDays) d: [...?widget.initial?[d]],
   };
   bool _saving = false;
   bool _changed = false;
@@ -602,7 +630,10 @@ class _AvailabilityEditorPageState extends State<AvailabilityEditorPage> {
     final t = await showTimePicker(
       context: context,
       helpText: help,
-      initialTime: TimeOfDay(hour: (minutes % 1440) ~/ 60, minute: minutes % 60),
+      initialTime: TimeOfDay(
+        hour: (minutes % 1440) ~/ 60,
+        minute: minutes % 60,
+      ),
       initialEntryMode: TimePickerEntryMode.dial,
     );
     if (t == null) return null;
@@ -636,9 +667,18 @@ class _AvailabilityEditorPageState extends State<AvailabilityEditorPage> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await MobileWrites.saveAvailability(widget.storeId, widget.memberId, _days);
+      await MobileWrites.saveAvailability(
+        widget.storeId,
+        widget.memberId,
+        _days,
+      );
       if (!mounted) return;
-      mSnack(context, 'Availability saved.');
+      mSnack(
+        context,
+        MobileWrites.preview
+            ? 'Preview: availability not saved.'
+            : 'Availability saved.',
+      );
       Navigator.of(context).pop();
     } catch (_) {
       if (mounted) mSnack(context, 'Couldn\'t save. Please try again.');
@@ -659,7 +699,9 @@ class _AvailabilityEditorPageState extends State<AvailabilityEditorPage> {
           builder: (ctx) => AlertDialog(
             backgroundColor: Theme.of(ctx).cardColor,
             title: const Text('Discard changes?'),
-            content: const Text('Your availability changes haven\'t been saved.'),
+            content: const Text(
+              'Your availability changes haven\'t been saved.',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -696,7 +738,8 @@ class _AvailabilityEditorPageState extends State<AvailabilityEditorPage> {
               _DayEditor(
                 label: weekdayNames[i],
                 windows: _days[availabilityDays[i]]!,
-                onAllDay: () => _set(availabilityDays[i], const [TimeWindow(0, 1440)]),
+                onAllDay: () =>
+                    _set(availabilityDays[i], const [TimeWindow(0, 1440)]),
                 onNone: () => _set(availabilityDays[i], const []),
                 onAdd: () => _addWindow(availabilityDays[i]),
                 onEdit: (k) => _editWindow(availabilityDays[i], k),
@@ -736,7 +779,8 @@ class _DayEditor extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = MColors(context);
-    final allDay = windows.length == 1 && _windowText(windows.first) == 'All day';
+    final allDay =
+        windows.length == 1 && _windowText(windows.first) == 'All day';
     return MCard(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
       child: Column(
@@ -775,7 +819,10 @@ class _DayEditor extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               if (windows.isEmpty)
-                Text('Unavailable', style: TextStyle(fontSize: 13.5, color: c.muted)),
+                Text(
+                  'Unavailable',
+                  style: TextStyle(fontSize: 13.5, color: c.muted),
+                ),
               for (var k = 0; k < windows.length; k++)
                 InputChip(
                   label: Text(_windowText(windows[k])),
@@ -785,7 +832,9 @@ class _DayEditor extends StatelessWidget {
                   ),
                   backgroundColor: AppTheme.tint(AppTheme.teal),
                   side: BorderSide(color: AppTheme.edge(AppTheme.teal)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                   onPressed: allDay ? null : () => onEdit(k),
                   onDeleted: () => onRemove(k),
                   deleteIconColor: AppTheme.onTint(AppTheme.teal),
@@ -794,8 +843,13 @@ class _DayEditor extends StatelessWidget {
                 ActionChip(
                   avatar: Icon(Icons.add, size: 16, color: c.text),
                   label: const Text('Add time'),
-                  labelStyle: TextStyle(fontWeight: FontWeight.w600, color: c.text),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                  labelStyle: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: c.text,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                   side: BorderSide(color: c.line),
                   backgroundColor: Colors.transparent,
                   onPressed: onAdd,
@@ -820,14 +874,20 @@ class _TimeOffView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = MColors(context);
-    final async = ref.watch(
-      memberTimeOffProvider((storeId: storeId, memberId: member.id!)),
-    );
+    final preview = ref.watch(schedulePreviewProvider);
+    final async = preview != null
+        ? AsyncValue.data(preview.timeOff)
+        : ref.watch(
+            memberTimeOffProvider((storeId: storeId, memberId: member.id!)),
+          );
     final today = dateKey(DateTime.now());
     final all = async.valueOrNull ?? const <TimeOffRequest>[];
     final upcoming = all.where((r) => r.endDate.compareTo(today) >= 0).toList()
       ..sort((a, b) => a.startDate.compareTo(b.startDate));
-    final past = all.where((r) => r.endDate.compareTo(today) < 0).take(10).toList();
+    final past = all
+        .where((r) => r.endDate.compareTo(today) < 0)
+        .take(10)
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -837,7 +897,8 @@ class _TimeOffView extends ConsumerWidget {
           icon: Icons.add,
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => TimeOffRequestPage(storeId: storeId, memberId: member.id!),
+              builder: (_) =>
+                  TimeOffRequestPage(storeId: storeId, memberId: member.id!),
             ),
           ),
         ),
@@ -850,7 +911,8 @@ class _TimeOffView extends ConsumerWidget {
           const MEmpty(
             icon: Icons.beach_access_outlined,
             title: 'No requests yet',
-            message: 'Ask for days off here. Leaders approve them on the desktop app.',
+            message:
+                'Ask for days off here. Leaders approve them on the desktop app.',
           )
         else ...[
           const MSection('Upcoming'),
@@ -876,7 +938,11 @@ class _TimeOffView extends ConsumerWidget {
 }
 
 class _TimeOffTile extends StatelessWidget {
-  const _TimeOffTile({required this.request, required this.storeId, this.past = false});
+  const _TimeOffTile({
+    required this.request,
+    required this.storeId,
+    this.past = false,
+  });
   final TimeOffRequest request;
   final String storeId;
   final bool past;
@@ -958,10 +1024,16 @@ class _TimeOffTile extends StatelessWidget {
         backgroundColor: Theme.of(ctx).cardColor,
         title: const Text('Cancel this request?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep it')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep it'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Cancel request', style: TextStyle(color: AppTheme.red)),
+            child: Text(
+              'Cancel request',
+              style: TextStyle(color: AppTheme.red),
+            ),
           ),
         ],
       ),
@@ -969,16 +1041,27 @@ class _TimeOffTile extends StatelessWidget {
     if (ok != true) return;
     try {
       await MobileWrites.cancelTimeOff(storeId, request.id);
-      if (context.mounted) mSnack(context, 'Request canceled.');
+      if (context.mounted)
+        mSnack(
+          context,
+          MobileWrites.preview
+              ? 'Preview: nothing was canceled.'
+              : 'Request canceled.',
+        );
     } catch (_) {
-      if (context.mounted) mSnack(context, 'Couldn\'t cancel. Please try again.');
+      if (context.mounted)
+        mSnack(context, 'Couldn\'t cancel. Please try again.');
     }
   }
 }
 
 /// Ask for time off: dates, all day or part of the day, and a reason.
 class TimeOffRequestPage extends StatefulWidget {
-  const TimeOffRequestPage({super.key, required this.storeId, required this.memberId});
+  const TimeOffRequestPage({
+    super.key,
+    required this.storeId,
+    required this.memberId,
+  });
   final String storeId;
   final String memberId;
 
@@ -1013,7 +1096,10 @@ class _TimeOffRequestPageState extends State<TimeOffRequestPage> {
   }
 
   Future<void> _pickTime(bool from) async {
-    final t = await showTimePicker(context: context, initialTime: from ? _from : _to);
+    final t = await showTimePicker(
+      context: context,
+      initialTime: from ? _from : _to,
+    );
     if (t == null) return;
     setState(() {
       if (from) {
@@ -1039,7 +1125,10 @@ class _TimeOffRequestPageState extends State<TimeOffRequestPage> {
         endMinute: _partDay ? _to.hour * 60 + _to.minute : null,
       );
       if (!mounted) return;
-      mSnack(context, 'Request sent.');
+      mSnack(
+        context,
+        MobileWrites.preview ? 'Preview: request not sent.' : 'Request sent.',
+      );
       Navigator.of(context).pop();
     } catch (_) {
       if (mounted) mSnack(context, 'Couldn\'t send. Please try again.');
@@ -1072,7 +1161,7 @@ class _TimeOffRequestPageState extends State<TimeOffRequestPage> {
             onTap: _pickDates,
             child: Row(
               children: [
-                Icon(Icons.date_range_outlined, color: AppTheme.accent),
+                Icon(Icons.date_range_outlined, color: MBrand.red),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -1094,7 +1183,7 @@ class _TimeOffRequestPageState extends State<TimeOffRequestPage> {
             child: SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               value: _partDay,
-              activeTrackColor: AppTheme.accent,
+              activeTrackColor: MBrand.red,
               title: Text(
                 'Only part of the day',
                 style: TextStyle(fontWeight: FontWeight.w600, color: c.text),
@@ -1112,7 +1201,10 @@ class _TimeOffRequestPageState extends State<TimeOffRequestPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('From', style: TextStyle(fontSize: 12.5, color: c.muted)),
+                        Text(
+                          'From',
+                          style: TextStyle(fontSize: 12.5, color: c.muted),
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           _from.format(context),
@@ -1133,7 +1225,10 @@ class _TimeOffRequestPageState extends State<TimeOffRequestPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Until', style: TextStyle(fontSize: 12.5, color: c.muted)),
+                        Text(
+                          'Until',
+                          style: TextStyle(fontSize: 12.5, color: c.muted),
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           _to.format(context),
@@ -1158,14 +1253,16 @@ class _TimeOffRequestPageState extends State<TimeOffRequestPage> {
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
               hintText: 'Family trip, appointment, school event…',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(color: c.line),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: AppTheme.accent, width: 1.5),
+                borderSide: BorderSide(color: MBrand.red, width: 1.5),
               ),
               filled: true,
               fillColor: c.card,

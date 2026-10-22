@@ -1,0 +1,7 @@
+{
+  "_about": "Store ID -> blueprint animation file in this folder. Keys starting with _ are ignored. A login with several linked stores plays one at random.",
+  "stores": {
+    "sample-store-a": "store_a.json",
+    "sample-store-b": "store_b.json"
+  }
+}

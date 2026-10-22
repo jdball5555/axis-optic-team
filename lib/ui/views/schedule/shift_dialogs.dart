@@ -223,7 +223,10 @@ class _PieceDialogState extends State<_PieceDialog> {
                               _error = null;
                               _start = v;
                               if (_end <= _start) {
-                                _end = math.min(_start + 60, kMaxScheduleMinute);
+                                _end = math.min(
+                                  _start + 60,
+                                  kMaxScheduleMinute,
+                                );
                               }
                             }),
                           ),
@@ -306,7 +309,9 @@ class _PieceDialogState extends State<_PieceDialog> {
                             'Their shift can span more than one row.',
                       ),
                     ],
-                    for (final w in warnings.where((w) => w != liveConflict)) ...[
+                    for (final w in warnings.where(
+                      (w) => w != liveConflict,
+                    )) ...[
                       const SizedBox(height: 8),
                       _InfoBox(
                         icon: Icons.warning_amber_rounded,
@@ -377,7 +382,9 @@ class _PieceDialogState extends State<_PieceDialog> {
     final key = dateKey(widget.date);
     final list = widget.people.where((p) {
       if (_search.isEmpty) return true;
-      return '${personName(p)} ${p.title ?? ''}'.toLowerCase().contains(_search);
+      return '${personName(p)} ${p.title ?? ''}'.toLowerCase().contains(
+        _search,
+      );
     }).toList();
 
     // People who fit the row first, then by name.
@@ -409,8 +416,8 @@ class _PieceDialogState extends State<_PieceDialog> {
           (t) => t.userId == p.id && t.covers(key),
         );
         final avail = availabilityFor(p, widget.date);
-        final unavailable = avail != null &&
-            !avail.any((w) => w.containsRange(_start, _end));
+        final unavailable =
+            avail != null && !avail.any((w) => w.containsRange(_start, _end));
         final selected = p.id == _userId;
 
         final tags = <(String, Color)>[
@@ -451,7 +458,9 @@ class _PieceDialogState extends State<_PieceDialog> {
               child: Row(
                 children: [
                   Icon(
-                    selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                    selected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
                     size: 18,
                     color: selected
                         ? AppTheme.accent
@@ -641,14 +650,14 @@ class _SplitDialogState extends State<_SplitDialog> {
         .where((w) => w.end > p.start && w.end < p.end)
         .map((w) => w.end)
         .firstOrNull;
-    final mid = p.start + ((p.end - p.start) ~/ 2 ~/ kScheduleStep) * kScheduleStep;
+    final mid =
+        p.start + ((p.end - p.start) ~/ 2 ~/ kScheduleStep) * kScheduleStep;
     _at = windowEnd ?? (mid <= p.start ? p.start + kScheduleStep : mid);
     _target = _suggestTarget();
   }
 
-  (int, int) get _movedRange => _moveLater
-      ? (_at, widget.piece.end)
-      : (widget.piece.start, _at);
+  (int, int) get _movedRange =>
+      _moveLater ? (_at, widget.piece.end) : (widget.piece.start, _at);
 
   String? _suggestTarget() {
     final (s, e) = _movedRange;
@@ -670,7 +679,8 @@ class _SplitDialogState extends State<_SplitDialog> {
     if (t == null) return 'Pick a row to move it to.';
     final (s, e) = _movedRange;
     final row = widget.day.rowById(t);
-    if (row != null && !userFitsRow(widget.usersById[widget.shift.userId], row)) {
+    if (row != null &&
+        !userFitsRow(widget.usersById[widget.shift.userId], row)) {
       return 'Not allowed in that row (only ${row.allowedTitles.join(', ')}).';
     }
     for (final (sh, p) in widget.day.piecesInRow(t)) {
@@ -810,7 +820,9 @@ Future<String?> showTraineeDialog(
         if (picked != null && picked!.isNotEmpty) {
           for (final s in day.shifts) {
             if (s.id == shift.id || !s.involves(picked!)) continue;
-            if (s.pieces.any((p) => shift.pieces.any((q) => p.overlaps(q.start, q.end)))) {
+            if (s.pieces.any(
+              (p) => shift.pieces.any((q) => p.overlaps(q.start, q.end)),
+            )) {
               conflict =
                   '${personName(usersById[picked])} is already working '
                   '${formatRange(s.start, s.end)}.';
@@ -859,7 +871,11 @@ Future<String?> showTraineeDialog(
                 ),
                 if (conflict != null) ...[
                   const SizedBox(height: 10),
-                  _InfoBox(icon: Icons.block, color: Colors.red, text: conflict),
+                  _InfoBox(
+                    icon: Icons.block,
+                    color: Colors.red,
+                    text: conflict,
+                  ),
                 ],
               ],
             ),

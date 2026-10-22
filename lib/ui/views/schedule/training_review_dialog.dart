@@ -76,7 +76,11 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
       final id = u.id!;
       final p = widget.saved[id];
       final saved = p?.done ?? const <int>{};
-      final left = remainingTrainingSteps(_steps, saved, widget.workedSince[id] ?? 0);
+      final left = remainingTrainingSteps(
+        _steps,
+        saved,
+        widget.workedSince[id] ?? 0,
+      );
       final all = {for (var i = 0; i < _steps; i++) i};
       _done[id] = all.difference(left.toSet());
       _auto[id] = _done[id]!.difference(saved);
@@ -90,7 +94,9 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
   List<UserModel> get _sorted => [...widget.people]
     ..sort((a, b) {
       // Newest hires first.
-      final c = (b.startDate ?? DateTime(1900)).compareTo(a.startDate ?? DateTime(1900));
+      final c = (b.startDate ?? DateTime(1900)).compareTo(
+        a.startDate ?? DateTime(1900),
+      );
       return c != 0 ? c : personName(a).compareTo(personName(b));
     });
 
@@ -108,7 +114,8 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
   static const double _stepWidth = 112;
   static const double _actionWidth = 140;
 
-  double get _tableWidth => _nameWidth + _stepWidth * _steps + _actionWidth + 24;
+  double get _tableWidth =>
+      _nameWidth + _stepWidth * _steps + _actionWidth + 24;
 
   Map<String, TrainingProgress> _result() => {
     for (final u in widget.people)
@@ -124,7 +131,9 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = theme.textTheme.bodySmall?.color;
-    final listed = _sorted.where((u) => !_notInTraining.contains(u.id)).toList();
+    final listed = _sorted
+        .where((u) => !_notInTraining.contains(u.id))
+        .toList();
     final off = _sorted.where((u) => _notInTraining.contains(u.id)).toList();
     final ws = widget.weekStart;
     final screen = MediaQuery.sizeOf(context);
@@ -132,7 +141,9 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
 
     return AlertDialog(
       backgroundColor: theme.cardColor,
-      title: Text('Training review · week of ${monthShort[ws.month - 1]} ${ws.day}'),
+      title: Text(
+        'Training review · week of ${monthShort[ws.month - 1]} ${ws.day}',
+      ),
       content: SizedBox(
         width: width,
         height: (screen.height - 220).clamp(360.0, 640.0),
@@ -159,7 +170,9 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, c) {
-                  final tableWidth = _tableWidth < c.maxWidth ? c.maxWidth : _tableWidth;
+                  final tableWidth = _tableWidth < c.maxWidth
+                      ? c.maxWidth
+                      : _tableWidth;
                   return SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: SizedBox(
@@ -174,7 +187,9 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
                               children: [
                                 if (listed.isEmpty)
                                   Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 24),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 24,
+                                    ),
                                     child: Center(
                                       child: Text(
                                         'Nobody is in training.',
@@ -184,7 +199,8 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
                                   ),
                                 for (final u in listed) _row(theme, u),
                                 const SizedBox(height: 8),
-                                if (off.isNotEmpty) _offToggle(theme, off.length),
+                                if (off.isNotEmpty)
+                                  _offToggle(theme, off.length),
                                 if (_showOff)
                                   for (final u in off) _offRow(theme, u),
                               ],
@@ -225,7 +241,10 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          SizedBox(width: _nameWidth, child: Text('Team member', style: bold)),
+          SizedBox(
+            width: _nameWidth,
+            child: Text('Team member', style: bold),
+          ),
           for (var i = 0; i < _steps; i++)
             SizedBox(
               width: _stepWidth,
@@ -263,7 +282,9 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.5))),
+        border: Border(
+          bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.5)),
+        ),
       ),
       child: Row(
         children: [
@@ -299,10 +320,14 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
               width: _stepWidth,
               child: Center(
                 child: Tooltip(
-                  message: _auto[id]!.contains(i) ? 'Worked on the schedule' : '',
+                  message: _auto[id]!.contains(i)
+                      ? 'Worked on the schedule'
+                      : '',
                   child: Checkbox(
                     value: done.contains(i),
-                    activeColor: _auto[id]!.contains(i) ? AppTheme.accent2 : null,
+                    activeColor: _auto[id]!.contains(i)
+                        ? AppTheme.accent2
+                        : null,
                     onChanged: (v) => toggle(i, v ?? false),
                   ),
                 ),
@@ -331,11 +356,19 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Row(
           children: [
-            Icon(_showOff ? Icons.expand_less : Icons.expand_more, size: 18, color: muted),
+            Icon(
+              _showOff ? Icons.expand_less : Icons.expand_more,
+              size: 18,
+              color: muted,
+            ),
             const SizedBox(width: 4),
             Text(
               'Not in training ($count)',
-              style: TextStyle(fontSize: 13, color: muted, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontSize: 13,
+                color: muted,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
@@ -350,7 +383,10 @@ class _TrainingReviewDialogState extends State<_TrainingReviewDialog> {
       child: Row(
         children: [
           Expanded(
-            child: Text(personName(u), style: TextStyle(fontSize: 13, color: muted)),
+            child: Text(
+              personName(u),
+              style: TextStyle(fontSize: 13, color: muted),
+            ),
           ),
           TextButton(
             onPressed: () => setState(() {

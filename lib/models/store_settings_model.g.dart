@@ -33,6 +33,24 @@ Map<String, dynamic> _$TitleConfigToJson(_TitleConfig instance) =>
       'autoPromoteOnChecklist': instance.autoPromoteOnChecklist,
     };
 
+_ChecklistTaskItem _$ChecklistTaskItemFromJson(Map<String, dynamic> json) =>
+    _ChecklistTaskItem(
+      id: json['id'] as String,
+      text: json['text'] as String,
+      positions:
+          (json['positions'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+    );
+
+Map<String, dynamic> _$ChecklistTaskItemToJson(_ChecklistTaskItem instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'text': instance.text,
+      'positions': instance.positions,
+    };
+
 _ChecklistConfig _$ChecklistConfigFromJson(Map<String, dynamic> json) =>
     _ChecklistConfig(
       id: json['id'] as String,
@@ -41,6 +59,7 @@ _ChecklistConfig _$ChecklistConfigFromJson(Map<String, dynamic> json) =>
       items:
           (json['items'] as List<dynamic>?)?.map((e) => e as String).toList() ??
           const [],
+      tasks: json['tasks'] == null ? const [] : _tasksFromJson(json['tasks']),
     );
 
 Map<String, dynamic> _$ChecklistConfigToJson(_ChecklistConfig instance) =>
@@ -49,6 +68,7 @@ Map<String, dynamic> _$ChecklistConfigToJson(_ChecklistConfig instance) =>
       'name': instance.name,
       'color': instance.color,
       'items': instance.items,
+      'tasks': _tasksToJson(instance.tasks),
     };
 
 _StoreSettingsModel _$StoreSettingsModelFromJson(

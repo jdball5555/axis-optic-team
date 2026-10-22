@@ -303,9 +303,284 @@ as bool,
 
 
 /// @nodoc
+mixin _$ChecklistTaskItem {
+
+ String get id; String get text; List<String> get positions;
+/// Create a copy of ChecklistTaskItem
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ChecklistTaskItemCopyWith<ChecklistTaskItem> get copyWith => _$ChecklistTaskItemCopyWithImpl<ChecklistTaskItem>(this as ChecklistTaskItem, _$identity);
+
+  /// Serializes this ChecklistTaskItem to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ChecklistTaskItem&&(identical(other.id, id) || other.id == id)&&(identical(other.text, text) || other.text == text)&&const DeepCollectionEquality().equals(other.positions, positions));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode => Object.hash(runtimeType,id,text,const DeepCollectionEquality().hash(positions));
+
+@override
+String toString() {
+  return 'ChecklistTaskItem(id: $id, text: $text, positions: $positions)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ChecklistTaskItemCopyWith<$Res>  {
+  factory $ChecklistTaskItemCopyWith(ChecklistTaskItem value, $Res Function(ChecklistTaskItem) _then) = _$ChecklistTaskItemCopyWithImpl;
+@useResult
+$Res call({
+ String id, String text, List<String> positions
+});
+
+
+
+
+}
+/// @nodoc
+class _$ChecklistTaskItemCopyWithImpl<$Res>
+    implements $ChecklistTaskItemCopyWith<$Res> {
+  _$ChecklistTaskItemCopyWithImpl(this._self, this._then);
+
+  final ChecklistTaskItem _self;
+  final $Res Function(ChecklistTaskItem) _then;
+
+/// Create a copy of ChecklistTaskItem
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? text = null,Object? positions = null,}) {
+  return _then(_self.copyWith(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
+as String,positions: null == positions ? _self.positions : positions // ignore: cast_nullable_to_non_nullable
+as List<String>,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [ChecklistTaskItem].
+extension ChecklistTaskItemPatterns on ChecklistTaskItem {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _ChecklistTaskItem value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _ChecklistTaskItem() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _ChecklistTaskItem value)  $default,){
+final _that = this;
+switch (_that) {
+case _ChecklistTaskItem():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _ChecklistTaskItem value)?  $default,){
+final _that = this;
+switch (_that) {
+case _ChecklistTaskItem() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String text,  List<String> positions)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _ChecklistTaskItem() when $default != null:
+return $default(_that.id,_that.text,_that.positions);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String text,  List<String> positions)  $default,) {final _that = this;
+switch (_that) {
+case _ChecklistTaskItem():
+return $default(_that.id,_that.text,_that.positions);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String text,  List<String> positions)?  $default,) {final _that = this;
+switch (_that) {
+case _ChecklistTaskItem() when $default != null:
+return $default(_that.id,_that.text,_that.positions);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _ChecklistTaskItem implements ChecklistTaskItem {
+  const _ChecklistTaskItem({required this.id, required this.text, final  List<String> positions = const []}): _positions = positions;
+  factory _ChecklistTaskItem.fromJson(Map<String, dynamic> json) => _$ChecklistTaskItemFromJson(json);
+
+@override final  String id;
+@override final  String text;
+ final  List<String> _positions;
+@override@JsonKey() List<String> get positions {
+  if (_positions is EqualUnmodifiableListView) return _positions;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_positions);
+}
+
+
+/// Create a copy of ChecklistTaskItem
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$ChecklistTaskItemCopyWith<_ChecklistTaskItem> get copyWith => __$ChecklistTaskItemCopyWithImpl<_ChecklistTaskItem>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$ChecklistTaskItemToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ChecklistTaskItem&&(identical(other.id, id) || other.id == id)&&(identical(other.text, text) || other.text == text)&&const DeepCollectionEquality().equals(other._positions, _positions));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode => Object.hash(runtimeType,id,text,const DeepCollectionEquality().hash(_positions));
+
+@override
+String toString() {
+  return 'ChecklistTaskItem(id: $id, text: $text, positions: $positions)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$ChecklistTaskItemCopyWith<$Res> implements $ChecklistTaskItemCopyWith<$Res> {
+  factory _$ChecklistTaskItemCopyWith(_ChecklistTaskItem value, $Res Function(_ChecklistTaskItem) _then) = __$ChecklistTaskItemCopyWithImpl;
+@override @useResult
+$Res call({
+ String id, String text, List<String> positions
+});
+
+
+
+
+}
+/// @nodoc
+class __$ChecklistTaskItemCopyWithImpl<$Res>
+    implements _$ChecklistTaskItemCopyWith<$Res> {
+  __$ChecklistTaskItemCopyWithImpl(this._self, this._then);
+
+  final _ChecklistTaskItem _self;
+  final $Res Function(_ChecklistTaskItem) _then;
+
+/// Create a copy of ChecklistTaskItem
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? text = null,Object? positions = null,}) {
+  return _then(_ChecklistTaskItem(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
+as String,positions: null == positions ? _self._positions : positions // ignore: cast_nullable_to_non_nullable
+as List<String>,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
 mixin _$ChecklistConfig {
 
- String get id; String get name; String get color; List<String> get items;
+ String get id; String get name; String get color; List<String> get items;@JsonKey(fromJson: _tasksFromJson, toJson: _tasksToJson) List<ChecklistTaskItem> get tasks;
 /// Create a copy of ChecklistConfig
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -318,16 +593,16 @@ $ChecklistConfigCopyWith<ChecklistConfig> get copyWith => _$ChecklistConfigCopyW
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ChecklistConfig&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.color, color) || other.color == color)&&const DeepCollectionEquality().equals(other.items, items));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ChecklistConfig&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.color, color) || other.color == color)&&const DeepCollectionEquality().equals(other.items, items)&&const DeepCollectionEquality().equals(other.tasks, tasks));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,name,color,const DeepCollectionEquality().hash(items));
+int get hashCode => Object.hash(runtimeType,id,name,color,const DeepCollectionEquality().hash(items),const DeepCollectionEquality().hash(tasks));
 
 @override
 String toString() {
-  return 'ChecklistConfig(id: $id, name: $name, color: $color, items: $items)';
+  return 'ChecklistConfig(id: $id, name: $name, color: $color, items: $items, tasks: $tasks)';
 }
 
 
@@ -338,7 +613,7 @@ abstract mixin class $ChecklistConfigCopyWith<$Res>  {
   factory $ChecklistConfigCopyWith(ChecklistConfig value, $Res Function(ChecklistConfig) _then) = _$ChecklistConfigCopyWithImpl;
 @useResult
 $Res call({
- String id, String name, String color, List<String> items
+ String id, String name, String color, List<String> items,@JsonKey(fromJson: _tasksFromJson, toJson: _tasksToJson) List<ChecklistTaskItem> tasks
 });
 
 
@@ -355,13 +630,14 @@ class _$ChecklistConfigCopyWithImpl<$Res>
 
 /// Create a copy of ChecklistConfig
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? name = null,Object? color = null,Object? items = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? name = null,Object? color = null,Object? items = null,Object? tasks = null,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
 as String,color: null == color ? _self.color : color // ignore: cast_nullable_to_non_nullable
 as String,items: null == items ? _self.items : items // ignore: cast_nullable_to_non_nullable
-as List<String>,
+as List<String>,tasks: null == tasks ? _self.tasks : tasks // ignore: cast_nullable_to_non_nullable
+as List<ChecklistTaskItem>,
   ));
 }
 
@@ -446,10 +722,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String name,  String color,  List<String> items)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String name,  String color,  List<String> items, @JsonKey(fromJson: _tasksFromJson, toJson: _tasksToJson)  List<ChecklistTaskItem> tasks)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ChecklistConfig() when $default != null:
-return $default(_that.id,_that.name,_that.color,_that.items);case _:
+return $default(_that.id,_that.name,_that.color,_that.items,_that.tasks);case _:
   return orElse();
 
 }
@@ -467,10 +743,10 @@ return $default(_that.id,_that.name,_that.color,_that.items);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String name,  String color,  List<String> items)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String name,  String color,  List<String> items, @JsonKey(fromJson: _tasksFromJson, toJson: _tasksToJson)  List<ChecklistTaskItem> tasks)  $default,) {final _that = this;
 switch (_that) {
 case _ChecklistConfig():
-return $default(_that.id,_that.name,_that.color,_that.items);case _:
+return $default(_that.id,_that.name,_that.color,_that.items,_that.tasks);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -487,10 +763,10 @@ return $default(_that.id,_that.name,_that.color,_that.items);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String name,  String color,  List<String> items)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String name,  String color,  List<String> items, @JsonKey(fromJson: _tasksFromJson, toJson: _tasksToJson)  List<ChecklistTaskItem> tasks)?  $default,) {final _that = this;
 switch (_that) {
 case _ChecklistConfig() when $default != null:
-return $default(_that.id,_that.name,_that.color,_that.items);case _:
+return $default(_that.id,_that.name,_that.color,_that.items,_that.tasks);case _:
   return null;
 
 }
@@ -501,8 +777,8 @@ return $default(_that.id,_that.name,_that.color,_that.items);case _:
 /// @nodoc
 @JsonSerializable()
 
-class _ChecklistConfig implements ChecklistConfig {
-  const _ChecklistConfig({required this.id, required this.name, this.color = 'Color', final  List<String> items = const []}): _items = items;
+class _ChecklistConfig extends ChecklistConfig {
+  const _ChecklistConfig({required this.id, required this.name, this.color = 'Color', final  List<String> items = const [], @JsonKey(fromJson: _tasksFromJson, toJson: _tasksToJson) final  List<ChecklistTaskItem> tasks = const []}): _items = items,_tasks = tasks,super._();
   factory _ChecklistConfig.fromJson(Map<String, dynamic> json) => _$ChecklistConfigFromJson(json);
 
 @override final  String id;
@@ -513,6 +789,13 @@ class _ChecklistConfig implements ChecklistConfig {
   if (_items is EqualUnmodifiableListView) return _items;
   // ignore: implicit_dynamic_type
   return EqualUnmodifiableListView(_items);
+}
+
+ final  List<ChecklistTaskItem> _tasks;
+@override@JsonKey(fromJson: _tasksFromJson, toJson: _tasksToJson) List<ChecklistTaskItem> get tasks {
+  if (_tasks is EqualUnmodifiableListView) return _tasks;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_tasks);
 }
 
 
@@ -529,16 +812,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ChecklistConfig&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.color, color) || other.color == color)&&const DeepCollectionEquality().equals(other._items, _items));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ChecklistConfig&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.color, color) || other.color == color)&&const DeepCollectionEquality().equals(other._items, _items)&&const DeepCollectionEquality().equals(other._tasks, _tasks));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,name,color,const DeepCollectionEquality().hash(_items));
+int get hashCode => Object.hash(runtimeType,id,name,color,const DeepCollectionEquality().hash(_items),const DeepCollectionEquality().hash(_tasks));
 
 @override
 String toString() {
-  return 'ChecklistConfig(id: $id, name: $name, color: $color, items: $items)';
+  return 'ChecklistConfig(id: $id, name: $name, color: $color, items: $items, tasks: $tasks)';
 }
 
 
@@ -549,7 +832,7 @@ abstract mixin class _$ChecklistConfigCopyWith<$Res> implements $ChecklistConfig
   factory _$ChecklistConfigCopyWith(_ChecklistConfig value, $Res Function(_ChecklistConfig) _then) = __$ChecklistConfigCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String name, String color, List<String> items
+ String id, String name, String color, List<String> items,@JsonKey(fromJson: _tasksFromJson, toJson: _tasksToJson) List<ChecklistTaskItem> tasks
 });
 
 
@@ -566,13 +849,14 @@ class __$ChecklistConfigCopyWithImpl<$Res>
 
 /// Create a copy of ChecklistConfig
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? name = null,Object? color = null,Object? items = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? name = null,Object? color = null,Object? items = null,Object? tasks = null,}) {
   return _then(_ChecklistConfig(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
 as String,color: null == color ? _self.color : color // ignore: cast_nullable_to_non_nullable
 as String,items: null == items ? _self._items : items // ignore: cast_nullable_to_non_nullable
-as List<String>,
+as List<String>,tasks: null == tasks ? _self._tasks : tasks // ignore: cast_nullable_to_non_nullable
+as List<ChecklistTaskItem>,
   ));
 }
 

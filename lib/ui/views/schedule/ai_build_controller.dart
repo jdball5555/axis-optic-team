@@ -61,7 +61,8 @@ class AiBuildController extends Notifier<AiBuildState> {
       state = state.copyWith(lines: [...state.lines, line]);
 
   void clear() {
-    if (!state.busy) state = AiBuildState(lines: intro(), undoLabel: state.undoLabel);
+    if (!state.busy)
+      state = AiBuildState(lines: intro(), undoLabel: state.undoLabel);
   }
 
   Future<void> Function()? _undo;
@@ -82,7 +83,10 @@ class AiBuildController extends Notifier<AiBuildState> {
       await undo();
       _undo = null;
       state = state.copyWith(clearUndo: true);
-      log((kind: AiLineKind.success, text: 'Undid $label. The schedule is back to how it was.'));
+      log((
+        kind: AiLineKind.success,
+        text: 'Undid $label. The schedule is back to how it was.',
+      ));
     });
   }
 
@@ -96,7 +100,9 @@ class AiBuildController extends Notifier<AiBuildState> {
 
   /// Runs [task] as the current build (ignored if one is already running).
   /// Errors are written to the log with a hint where one helps.
-  Future<void> run(Future<void> Function(void Function(AiLine) log) task) async {
+  Future<void> run(
+    Future<void> Function(void Function(AiLine) log) task,
+  ) async {
     if (state.busy) return;
     state = state.copyWith(busy: true);
     try {

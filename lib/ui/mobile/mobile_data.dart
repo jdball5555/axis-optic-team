@@ -10,9 +10,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rxdart/rxdart.dart';
 
 import '../../models/schedule_models.dart';
+import '../../models/title_journey.dart';
 import '../../models/user_model.dart';
 import '../../providers/app_providers.dart';
 import '../../providers/feature_providers.dart';
+import '../../services/schedule_repository.dart';
 
 // =============================================================================
 // Layout
@@ -20,8 +22,11 @@ import '../../providers/feature_providers.dart';
 
 /// Use the phone app: team-member logins always (it's their app on any
 /// screen), everyone else when the screen is phone-sized.
-bool useMobileLayout(Map<String, dynamic>? user) {
-  if (user?['role'] == 'team_member') return true;
+bool useMobileLayout(
+  Map<String, dynamic>? user, {
+  bool teamMemberView = false,
+}) {
+  if (teamMemberView || user?['role'] == 'team_member') return true;
   final views = WidgetsBinding.instance.platformDispatcher.views;
   if (views.isEmpty) return false;
   final view = views.first;
@@ -59,7 +64,19 @@ final mobileStoreIdsProvider = Provider<List<String>>((ref) {
 /// The signed-in person's own team-member record in the current store:
 /// linked by their login (team-member accounts), or matched by email (an
 /// owner who is also on the team). Null when they aren't on the team table.
+///
+/// While a promotion is still a surprise (not sent yet, or the
+/// congratulations screen hasn't been seen) this shows their old title.
 final myMemberProvider = Provider<AsyncValue<UserModel?>>((ref) {
+  final promotion = ref.watch(myPromotionProvider);
+  return ref.watch(myTeamRecordProvider).whenData((m) {
+    if (m == null || promotion == null || !promotion.hides(m.title)) return m;
+    return m.copyWith(title: promotion.from);
+  });
+});
+
+/// [myMemberProvider] as saved (the real, current title).
+final myTeamRecordProvider = Provider<AsyncValue<UserModel?>>((ref) {
   final user = ref.watch(currentUserProvider);
   if (user == null) return const AsyncValue.data(null);
   final uid = user['id'] as String?;
@@ -78,6 +95,261 @@ final myMemberProvider = Provider<AsyncValue<UserModel?>>((ref) {
     }).firstOrNull;
   });
 });
+
+// =============================================================================
+// Promotions
+// =============================================================================
+
+/// A team member's raw Firestore record (for fields the model doesn't carry:
+/// promotion, fcm_tokens, notifications_enabled).
+final memberDocProvider =
+    StreamProvider.family<Map<String, dynamic>?, MemberKey>((ref, key) {
+      if (key.storeId.isEmpty || key.memberId.isEmpty) {
+        return Stream.value(null);
+      }
+      return FirebaseFirestore.instance
+          .collection('stores')
+          .doc(key.storeId)
+          .collection('users')
+          .doc(key.memberId)
+          .snapshots()
+          .map((d) => d.data());
+    });
+
+/// The latest promotion a leader recorded for someone (website → Promote).
+/// Firestore: stores/{storeId}/users/{memberId}.promotion
+class Promotion {
+  const Promotion({
+    required this.id,
+    required this.from,
+    required this.to,
+    required this.revealAt,
+    required this.seen,
+    this.date,
+  });
+
+  final String id;
+  final String from;
+  final String to;
+  final DateTime? date;
+
+  /// When they find out (the notification's send time).
+  final DateTime revealAt;
+
+  /// They've seen the congratulations screen.
+  final bool seen;
+
+  bool get revealed => !DateTime.now().isBefore(revealAt);
+
+  /// Time for the congratulations screen.
+  bool get due => !seen && revealed;
+
+  /// Keep showing the old title (still a surprise or not celebrated yet).
+  /// Only while [title] is still the promoted one (a leader may have
+  /// changed it again since).
+  bool hides(String? title) =>
+      !seen && from.isNotEmpty && from != to && title == to;
+
+  static Promotion? fromJson(dynamic j) {
+    if (j is! Map) return null;
+    final to = j['to'];
+    if (to is! String || to.isEmpty) return null;
+    final reveal = j['reveal_at'];
+    return Promotion(
+      id: j['id'] as String? ?? '',
+      from: j['from'] as String? ?? '',
+      to: to,
+      date: DateTime.tryParse(j['date'] as String? ?? ''),
+      revealAt: reveal is Timestamp
+          ? reveal.toDate()
+          : DateTime.fromMillisecondsSinceEpoch(0),
+      seen: j['seen'] == true,
+    );
+  }
+}
+
+/// The signed-in person's latest promotion in the current store.
+final myPromotionProvider = Provider<Promotion?>((ref) {
+  final storeId = ref.watch(currentStoreIdProvider);
+  final id = ref.watch(myTeamRecordProvider).valueOrNull?.id;
+  if (storeId == null || id == null) return null;
+  final doc = ref
+      .watch(memberDocProvider((storeId: storeId, memberId: id)))
+      .valueOrNull;
+  return Promotion.fromJson(doc?['promotion']);
+});
+
+/// Set by the congratulations screen so Home plays the title change.
+/// [test] = the Settings test (Home puts the real title back afterwards).
+final titleSwapProvider = StateProvider<({String from, String to, bool test})?>(
+  (ref) => null,
+);
+
+/// Settings → "Test the promotion": a pretend promotion for the
+/// congratulations screen. Nothing is saved.
+final promotionTestProvider = StateProvider<Promotion?>((ref) => null);
+
+// =============================================================================
+// Schedule preview (leaders): the Schedule tab with a sample team member
+// =============================================================================
+
+/// The sample team member while a leader previews the team member view:
+/// in "View as team member" (the whole app), or set in a nested
+/// ProviderScope for the Schedule tab preview. Nothing is saved meanwhile.
+final schedulePreviewProvider = Provider<SchedulePreview?>((ref) {
+  if (!ref.watch(teamMemberViewProvider)) return null;
+  final user = ref.watch(currentUserProvider) ?? const <String, dynamic>{};
+  final storeId = ref.watch(currentStoreIdProvider);
+  final titles =
+      ref.watch(storeSettingsProvider).valueOrNull?.titles ?? const [];
+  final config =
+      (storeId == null
+          ? null
+          : ref.watch(scheduleConfigProvider(storeId)).valueOrNull) ??
+      const ScheduleConfig();
+  final journey = journeyFor(
+    storeId == null
+        ? null
+        : ref.watch(titleJourneyProvider(storeId)).valueOrNull,
+    titles,
+  );
+  // A regular team member: the "Team Member" title, else where new hires start.
+  final title =
+      titles
+          .where((t) => t.name.toLowerCase().contains('team member'))
+          .firstOrNull
+          ?.name ??
+      titles.where((t) => t.id == journey.start).firstOrNull?.name ??
+      titles.firstOrNull?.name ??
+      'Team Member';
+  String name(String key, String fallback) {
+    final v = (user[key] as String? ?? '').trim();
+    return v.isEmpty ? fallback : v;
+  }
+
+  return SchedulePreview.build(
+    title: title,
+    thisWeek: weekStartFor(DateTime.now(), config.weekStart),
+    firstName: name('first_name', 'Jordan'),
+    lastName: name('last_name', 'Sample'),
+  );
+});
+
+/// "View as team member": an owner or leader sees the phone app exactly as
+/// someone on the team does (as themselves, with a sample schedule), without
+/// the website around it. Nothing is saved meanwhile. Turned off in
+/// Settings, which goes back to the dashboard.
+final teamMemberViewProvider = StateProvider<bool>((ref) => false);
+
+/// Which part of the Schedule tab to open next (from Home's shortcuts):
+/// 0 shifts, 1 availability, 2 time off.
+final scheduleSectionRequestProvider = StateProvider<int?>((ref) => null);
+
+/// Turns "View as team member" on or off.
+void setTeamMemberView(WidgetRef ref, bool on) {
+  MobileWrites.preview = on;
+  ref.read(teamMemberViewProvider.notifier).state = on;
+}
+
+class SchedulePreview {
+  SchedulePreview({required this.member, required this.thisWeek});
+
+  /// The sample team member.
+  final UserModel member;
+
+  /// Start of the current week (the store's week start).
+  final DateTime thisWeek;
+
+  static const id = '__preview__';
+
+  static SchedulePreview build({
+    required String? title,
+    required DateTime thisWeek,
+    String firstName = 'Jordan',
+    String lastName = 'Sample',
+  }) {
+    final now = DateTime.now();
+    List<Map<String, String>> w(String a, String b) => [
+      {'start': a, 'end': b},
+    ];
+    return SchedulePreview(
+      thisWeek: thisWeek,
+      member: UserModel(
+        id: id,
+        firstName: firstName,
+        lastName: lastName,
+        title: title,
+        designation: 'Adult',
+        foodHandlersExpiration: DateTime(now.year + 1, now.month, 1),
+        position: 'Front of House',
+        workingTime: 'Part Time',
+        startDate: DateTime(now.year, now.month - 8, 14),
+        activeAvailability: {
+          'monday': w('10:00', '22:00'),
+          'tuesday': <Map<String, String>>[],
+          'wednesday': w('15:00', '23:00'),
+          'thursday': w('15:00', '23:00'),
+          'friday': w('10:00', '23:00'),
+          'saturday': w('08:00', '23:00'),
+          'sunday': <Map<String, String>>[],
+        },
+      ),
+    );
+  }
+
+  /// Sample shifts: this week and next are posted, later weeks aren't yet.
+  List<RosterEntry> shiftsFor(DateTime weekStart) {
+    final weeks =
+        dateOnly(weekStart).difference(dateOnly(thisWeek)).inDays ~/ 7;
+    if (weeks > 1) return const [];
+    const patterns = [
+      [
+        (0, 660, 1020, 'Front Counter'),
+        (2, 960, 1320, 'Drive-Thru'),
+        (4, 1020, 1380, 'Drive-Thru'),
+        (5, 630, 990, 'Front Counter'),
+      ],
+      [
+        (0, 960, 1320, 'Drive-Thru'),
+        (3, 990, 1380, 'Front Counter'),
+        (4, 660, 1020, 'Front Counter'),
+        (5, 1020, 1380, 'Drive-Thru'),
+      ],
+    ];
+    final p = patterns[weeks.abs() % 2];
+    return [
+      for (final (day, start, end, area) in p)
+        RosterEntry(
+          userId: id,
+          date: dateKey(addDays(weekStart, day)),
+          start: start,
+          end: end,
+          boardId: kMainBoardId,
+          area: area,
+        ),
+    ];
+  }
+
+  /// Sample time off requests.
+  List<TimeOffRequest> get timeOff => [
+    TimeOffRequest(
+      id: 'preview-1',
+      startDate: dateKey(addDays(thisWeek, 15)),
+      endDate: dateKey(addDays(thisWeek, 17)),
+      status: 'approved',
+      reason: 'Family trip',
+    ),
+    TimeOffRequest(
+      id: 'preview-2',
+      startDate: dateKey(addDays(thisWeek, 9)),
+      endDate: dateKey(addDays(thisWeek, 9)),
+      status: 'pending',
+      reason: 'Dentist appointment',
+      startTime: '13:00',
+      endTime: '15:00',
+    ),
+  ];
+}
 
 /// What the signed-in person can see and do on the phone.
 class MobileAccess {
@@ -128,6 +400,16 @@ class MobileAccess {
 }
 
 final mobileAccessProvider = Provider<MobileAccess>((ref) {
+  // "View as team member": exactly what someone on the team gets.
+  if (ref.watch(teamMemberViewProvider)) {
+    return MobileAccess(
+      role: 'team_member',
+      member: ref.watch(schedulePreviewProvider)?.member,
+      levels: const {},
+      scheduleOn: ref.watch(scheduleFeatureProvider),
+      shiftOn: ref.watch(shiftFeatureProvider),
+    );
+  }
   final user = ref.watch(currentUserProvider) ?? const <String, dynamic>{};
   final member = ref.watch(myMemberProvider).valueOrNull;
   final levels = <String, bool>{};
@@ -297,15 +579,14 @@ final postedWeekProvider =
               .snapshots()
               .map(
                 (snap) => [
-                  for (final d in snap.docs) RosterEntry.fromPosted(d.data(), b),
+                  for (final d in snap.docs)
+                    RosterEntry.fromPosted(d.data(), b),
                 ],
               ),
       ];
-      return Rx.combineLatestList(streams).map(
-        (lists) => [
-          for (final l in lists) ...l,
-        ],
-      );
+      return Rx.combineLatestList(
+        streams,
+      ).map((lists) => [for (final l in lists) ...l]);
     });
 
 /// Comma-separated ids of a store's schedules, for [postedWeekProvider].
@@ -374,23 +655,49 @@ final memberTimeOffProvider =
           .snapshots()
           .map((snap) {
             final list = [
-              for (final d in snap.docs) TimeOffRequest.fromJson(d.id, d.data()),
+              for (final d in snap.docs)
+                TimeOffRequest.fromJson(d.id, d.data()),
             ]..sort((a, b) => b.startDate.compareTo(a.startDate));
             return list;
           });
     });
 
-/// Every pending time off request in a store (for leaders).
-final storePendingTimeOffProvider =
-    StreamProvider.family<int, String>((ref, storeId) {
+/// Approved time off in a store, with whose it is (for leaders' roster).
+final storeApprovedTimeOffProvider =
+    StreamProvider.family<
+      List<({String userId, TimeOffRequest request})>,
+      String
+    >((ref, storeId) {
       return FirebaseFirestore.instance
           .collection('stores')
           .doc(storeId)
           .collection('time_off_requests')
-          .where('status', isEqualTo: 'pending')
+          .where('status', isEqualTo: 'approved')
           .snapshots()
-          .map((s) => s.docs.length);
+          .map(
+            (snap) => [
+              for (final d in snap.docs)
+                (
+                  userId: d.data()['user_id'] as String? ?? '',
+                  request: TimeOffRequest.fromJson(d.id, d.data()),
+                ),
+            ],
+          );
     });
+
+/// Every pending time off request in a store (for leaders).
+final storePendingTimeOffProvider = StreamProvider.family<int, String>((
+  ref,
+  storeId,
+) {
+  return FirebaseFirestore.instance
+      .collection('stores')
+      .doc(storeId)
+      .collection('time_off_requests')
+      .where('status', isEqualTo: 'pending')
+      .snapshots()
+      .map((s) => s.docs.length);
+});
 
 /// Weekday keys used by availability ("monday" … "sunday").
 const availabilityDays = [
@@ -436,6 +743,9 @@ String hhmm(int minutes) {
 class MobileWrites {
   static final _db = FirebaseFirestore.instance;
 
+  /// A leader is previewing the team member view: writes do nothing.
+  static bool preview = false;
+
   static DocumentReference<Map<String, dynamic>> _store(String id) =>
       _db.collection('stores').doc(id);
 
@@ -446,6 +756,7 @@ class MobileWrites {
     String memberId,
     Map<String, List<TimeWindow>> byDay,
   ) async {
+    if (preview) return;
     final data = <String, dynamic>{
       for (final day in availabilityDays)
         day: [
@@ -454,7 +765,10 @@ class MobileWrites {
         ],
     };
     final batch = _db.batch();
-    batch.set(_store(storeId).collection('active_availability').doc(memberId), data);
+    batch.set(
+      _store(storeId).collection('active_availability').doc(memberId),
+      data,
+    );
     batch.update(_store(storeId).collection('users').doc(memberId), {
       'active_availability': data,
     });
@@ -469,21 +783,28 @@ class MobileWrites {
     String reason = '',
     int? startMinute,
     int? endMinute,
-  }) => _store(storeId).collection('time_off_requests').add({
-    'user_id': memberId,
-    'start_date': dateKey(start),
-    'end_date': dateKey(end),
-    if (startMinute != null && endMinute != null) ...{
-      'start_time': hhmm(startMinute),
-      'end_time': hhmm(endMinute),
-    },
-    'status': 'pending',
-    'reason': reason,
-    'approved_by': null,
-    'created_at': FieldValue.serverTimestamp(),
-  });
+  }) async {
+    if (preview) return;
+    await _store(storeId).collection('time_off_requests').add({
+      'user_id': memberId,
+      'start_date': dateKey(start),
+      'end_date': dateKey(end),
+      if (startMinute != null && endMinute != null) ...{
+        'start_time': hhmm(startMinute),
+        'end_time': hhmm(endMinute),
+      },
+      'status': 'pending',
+      'reason': reason,
+      'approved_by': null,
+      'created_at': FieldValue.serverTimestamp(),
+    });
+  }
 
   /// Takes back a request that hasn't been answered yet.
-  static Future<void> cancelTimeOff(String storeId, String requestId) =>
-      _store(storeId).collection('time_off_requests').doc(requestId).delete();
+  static Future<void> cancelTimeOff(String storeId, String requestId) async {
+    if (preview) return;
+    await _store(
+      storeId,
+    ).collection('time_off_requests').doc(requestId).delete();
+  }
 }

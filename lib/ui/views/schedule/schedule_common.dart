@@ -34,10 +34,9 @@ bool userFitsRow(UserModel? u, ScheduleRow row) {
 }
 
 /// Numbers in someone's roster "avg shifts" (e.g. "4", "3-4", "4.5").
-List<double> _avgShiftNumbers(UserModel? u) => RegExp(r'\d+(?:\.\d+)?')
-    .allMatches(u?.avgShifts ?? '')
-    .map((m) => double.parse(m.group(0)!))
-    .toList();
+List<double> _avgShiftNumbers(UserModel? u) => RegExp(
+  r'\d+(?:\.\d+)?',
+).allMatches(u?.avgShifts ?? '').map((m) => double.parse(m.group(0)!)).toList();
 
 /// Roughly how many shifts a week someone usually works, from the roster's
 /// "avg shifts" ("3-4" → 3.5). Null when it isn't filled in.
@@ -147,7 +146,11 @@ class TrainingBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.school, size: dense ? 11 : 12, color: AppTheme.onTint(AppTheme.accent2)),
+          Icon(
+            Icons.school,
+            size: dense ? 11 : 12,
+            color: AppTheme.onTint(AppTheme.accent2),
+          ),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
@@ -257,9 +260,7 @@ class TimeDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final options = <int>[
-      for (var m = min; m <= max; m += kScheduleStep) m,
-    ];
+    final options = <int>[for (var m = min; m <= max; m += kScheduleStep) m];
     if (!options.contains(value)) {
       options
         ..add(value)
@@ -509,7 +510,9 @@ class _RowEditorDialogState extends State<_RowEditorDialog> {
               TextButton.icon(
                 onPressed: () => setState(() {
                   final last = _windows.isEmpty ? null : _windows.last;
-                  final s = last == null ? 11 * 60 : math.min(last.end + 120, 22 * 60);
+                  final s = last == null
+                      ? 11 * 60
+                      : math.min(last.end + 120, 22 * 60);
                   _windows = [
                     ..._windows,
                     TimeWindow(s, math.min(s + 4 * 60, kMaxScheduleMinute)),
@@ -649,7 +652,10 @@ class TimelineHeader extends StatelessWidget {
             Positioned(
               // Keep the first and last labels inside the timeline.
               left: (metrics.x(m) - labelW / 2)
-                  .clamp(0.0, (metrics.width - labelW).clamp(0.0, double.infinity))
+                  .clamp(
+                    0.0,
+                    (metrics.width - labelW).clamp(0.0, double.infinity),
+                  )
                   .toDouble(),
               width: labelW,
               top: 4,
@@ -690,7 +696,11 @@ class TimelineGridPainter extends CustomPainter {
       ..strokeWidth = 1;
     for (var m = metrics.start; m <= metrics.end; m += 30) {
       final x = metrics.x(m);
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), m % 60 == 0 ? hour : half);
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
+        m % 60 == 0 ? hour : half,
+      );
     }
   }
 
@@ -746,7 +756,8 @@ class BoardSwitcher extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final current = boards.where((b) => b.id == selectedId).firstOrNull ?? boards.first;
+    final current =
+        boards.where((b) => b.id == selectedId).firstOrNull ?? boards.first;
     return PopupMenuButton<String>(
       tooltip: tooltip,
       color: theme.cardColor,

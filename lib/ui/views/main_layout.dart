@@ -18,6 +18,7 @@ class MainLayout extends ConsumerStatefulWidget {
 }
 
 class _MainLayoutState extends ConsumerState<MainLayout> {
+  static const Color _devPurple = Color(0xFFA855F7);
   bool _isSidebarExpanded = true;
   final GlobalKey _storeMenuKey = GlobalKey();
 
@@ -31,6 +32,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     );
     final isScheduleEnabled = ref.watch(scheduleFeatureProvider);
     final isShiftEnabled = ref.watch(shiftFeatureProvider);
+    final devModeInfo = ref.watch(currentStoreDevModeProvider);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -62,7 +64,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                             children: [
                               const SizedBox(height: 20),
                               // App icon (always shown, centered over the nav
-                              // icons when collapsed) + "Axis Team" (fades).
+                              // icons when collapsed) + "Team" (fades).
                               SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 physics: const NeverScrollableScrollPhysics(),
@@ -93,20 +95,71 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                                             opacity: _isSidebarExpanded
                                                 ? 1.0
                                                 : 0.0,
-                                            child: Text(
-                                              'Axis Team',
-                                              maxLines: 1,
-                                              softWrap: false,
-                                              overflow: TextOverflow.fade,
-                                              style: TextStyle(
-                                                color: Theme.of(
-                                                  context,
-                                                ).textTheme.titleLarge?.color,
-                                                fontWeight: FontWeight.w900,
-                                                fontSize: 22,
-                                                letterSpacing: 0.5,
-                                                height: 1.1,
-                                              ),
+                                            child: Row(
+                                              children: [
+                                                Text(
+                                                  'Team',
+                                                  maxLines: 1,
+                                                  softWrap: false,
+                                                  overflow: TextOverflow.fade,
+                                                  style: TextStyle(
+                                                    color: Theme.of(
+                                                      context,
+                                                    ).textTheme.titleLarge?.color,
+                                                    fontWeight: FontWeight.w900,
+                                                    fontSize: 22,
+                                                    letterSpacing: 0.5,
+                                                    height: 1.1,
+                                                  ),
+                                                ),
+                                                if (devModeInfo.isDev) ...[
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: _devPurple
+                                                          .withValues(
+                                                        alpha: 0.18,
+                                                      ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(4),
+                                                      border: Border.all(
+                                                        color: _devPurple
+                                                            .withValues(
+                                                          alpha: 0.6,
+                                                        ),
+                                                        width: 1,
+                                                      ),
+                                                    ),
+                                                    child: const Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          Icons.developer_mode,
+                                                          size: 12,
+                                                          color: _devPurple,
+                                                        ),
+                                                        SizedBox(width: 3),
+                                                        Text(
+                                                          'DEV',
+                                                          style: TextStyle(
+                                                            fontSize: 10,
+                                                            fontWeight:
+                                                                FontWeight.w900,
+                                                            color: _devPurple,
+                                                            letterSpacing: 0.5,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
                                             ),
                                           ),
                                         ),
@@ -442,6 +495,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     final currentStoreId = ref.watch(currentStoreIdProvider);
     final allStoresAsync = ref.watch(allStoresStreamProvider);
     final currentUser = ref.watch(currentUserProvider);
+    final devModeInfo = ref.watch(currentStoreDevModeProvider);
 
     String userNameDisplay = 'Unknown User';
     if (currentUser != null) {
@@ -451,9 +505,17 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
 
     return allStoresAsync.when(
       data: (stores) {
+        final ownedStoresList = (currentUser?['owned_stores'] as List?)
+            ?.map((e) => e.toString())
+            .toList() ?? [];
+        final visibleStores = ownedStoresList.isNotEmpty
+            ? stores.where((s) => ownedStoresList.contains(s['id'])).toList()
+            : stores;
+
         String storeDisplayName = 'All Stores';
         if (currentStoreId != null) {
-          final s = stores.where((e) => e['id'] == currentStoreId).firstOrNull;
+          final s =
+              visibleStores.where((e) => e['id'] == currentStoreId).firstOrNull;
           storeDisplayName = s?['name'] as String? ?? 'Untitled Store';
         }
 
@@ -487,7 +549,9 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                           key: _storeMenuKey,
                           enabled:
                               false, // Disables its own tap listener so InkWell can catch it
-                          tooltip: 'Change Store',
+                          tooltip: devModeInfo.isDev
+                              ? '$storeDisplayName (Dev Mode)'
+                              : 'Change Store',
                           color: Theme.of(context).cardColor,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
@@ -520,18 +584,103 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                             }
                           },
                           itemBuilder: (context) {
+                            final allDevCount = visibleStores
+                                .where((s) =>
+                                    s['is_dev'] == true || s['isDev'] == true)
+                                .length;
                             List<PopupMenuEntry<String>> items = [
-                              const PopupMenuItem(
+                              PopupMenuItem(
                                 value: 'all',
-                                child: Text('All Stores'),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Expanded(
+                                      child: Text(
+                                        'All Stores',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (allDevCount > 0) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 5,
+                                          vertical: 1.5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF39C12)
+                                              .withValues(alpha: 0.15),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFF39C12)
+                                                .withValues(alpha: 0.5),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          allDevCount == visibleStores.length
+                                              ? 'DEV'
+                                              : 'DEV ($allDevCount/${visibleStores.length})',
+                                          style: const TextStyle(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                            color: _devPurple,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ),
                             ];
-                            for (var s in stores) {
+                            for (var s in visibleStores) {
+                              final isDev =
+                                  s['is_dev'] == true || s['isDev'] == true;
                               items.add(
                                 PopupMenuItem(
                                   value: s['id'] as String,
-                                  child: Text(
-                                    s['name'] as String? ?? 'Untitled Store',
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          s['name'] as String? ??
+                                              'Untitled Store',
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (isDev) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 1.5,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: _devPurple
+                                                .withValues(alpha: 0.15),
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                            border: Border.all(
+                                              color: _devPurple
+                                                  .withValues(alpha: 0.5),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            'DEV',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                              color: _devPurple,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ),
                               );
@@ -544,12 +693,37 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                               const SizedBox(width: 25),
                               Padding(
                                 padding: const EdgeInsets.only(top: 2.0),
-                                child: Icon(
-                                  Icons.store,
-                                  size: 20,
-                                  color: Theme.of(
-                                    context,
-                                  ).textTheme.bodySmall?.color,
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    Icon(
+                                      Icons.store,
+                                      size: 20,
+                                      color: devModeInfo.isDev
+                                          ? _devPurple
+                                          : Theme.of(
+                                              context,
+                                            ).textTheme.bodySmall?.color,
+                                    ),
+                                    if (devModeInfo.isDev)
+                                      Positioned(
+                                        right: -3,
+                                        top: -3,
+                                        child: Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            color: _devPurple,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color:
+                                                  Theme.of(context).cardColor,
+                                              width: 1.5,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
                               if (_isSidebarExpanded) ...[
@@ -564,6 +738,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                                       fontWeight: FontWeight.bold,
                                     ),
                                     maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 Padding(
@@ -585,15 +760,19 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                       const SizedBox(height: 16),
                       InkWell(
                         onTap: () => _navigateWithCheck(context, '/account'),
+                        borderRadius: BorderRadius.circular(8),
                         child: Row(
                           children: [
                             const SizedBox(width: 25),
-                            Icon(
-                              Icons.account_circle,
-                              size: 20,
-                              color: Theme.of(
-                                context,
-                              ).textTheme.bodySmall?.color,
+                            Tooltip(
+                              message: 'Account Settings',
+                              child: Icon(
+                                Icons.account_circle,
+                                size: 20,
+                                color: Theme.of(
+                                  context,
+                                ).textTheme.bodySmall?.color,
+                              ),
                             ),
                             if (_isSidebarExpanded) ...[
                               const SizedBox(width: 16),
@@ -610,6 +789,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                                   softWrap: false,
                                 ),
                               ),
+                              const SizedBox(width: 16),
                             ],
                           ],
                         ),

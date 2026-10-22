@@ -8,6 +8,9 @@ import 'package:flutter/material.dart';
 /// side-to-side scrollbar always along the bottom of the visible area and
 /// the up-and-down one along its right edge.
 ///
+/// Optional pinned column on the left (e.g. for team member names) that stays
+/// anchored horizontally while scrolling vertically in sync with the table.
+///
 /// Diagonal trackpad / wheel scrolling moves both ways together. (Nested
 /// scroll views normally hand a diagonal scroll to the inner list only, so
 /// the sideways part is lost and it feels stuck to one axis.)
@@ -19,11 +22,19 @@ class ScrollTable extends StatefulWidget {
   /// The rows: a scrollable list that must use [vertical] as its controller.
   final Widget Function(ScrollController vertical) body;
 
+  /// Optional pinned column on the left.
+  final double? pinnedWidth;
+  final Widget? pinnedHeader;
+  final Widget Function(ScrollController vertical)? pinnedBody;
+
   const ScrollTable({
     super.key,
     required this.width,
     required this.header,
     required this.body,
+    this.pinnedWidth,
+    this.pinnedHeader,
+    this.pinnedBody,
   });
 
   @override
@@ -34,15 +45,29 @@ class _ScrollTableState extends State<ScrollTable> {
   final _h = ScrollController();
   final _hHeader = ScrollController();
   final _v = ScrollController();
+  final _vPinned = ScrollController();
+  bool _syncingV = false;
 
   @override
   void initState() {
     super.initState();
     _h.addListener(() {
       if (_hHeader.hasClients && _hHeader.offset != _h.offset) {
-        _hHeader.jumpTo(_h.offset.clamp(0.0, _hHeader.position.maxScrollExtent));
+        _hHeader.jumpTo(
+          _h.offset.clamp(0.0, _hHeader.position.maxScrollExtent),
+        );
       }
     });
+    _v.addListener(() => _syncV(_v, _vPinned));
+    _vPinned.addListener(() => _syncV(_vPinned, _v));
+  }
+
+  void _syncV(ScrollController from, ScrollController to) {
+    if (_syncingV || !to.hasClients || !from.hasClients) return;
+    if ((to.offset - from.offset).abs() < 0.5) return;
+    _syncingV = true;
+    to.jumpTo(from.offset.clamp(0.0, to.position.maxScrollExtent));
+    _syncingV = false;
   }
 
   @override
@@ -50,6 +75,7 @@ class _ScrollTableState extends State<ScrollTable> {
     _h.dispose();
     _hHeader.dispose();
     _v.dispose();
+    _vPinned.dispose();
     super.dispose();
   }
 
@@ -87,16 +113,39 @@ class _ScrollTableState extends State<ScrollTable> {
     });
   }
 
+  /// Over the pinned column (which doesn't scroll horizontally): move vertically,
+  /// and if scrolled horizontally, also move table sideways.
+  void _onPinnedSignal(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent) return;
+    GestureBinding.instance.pointerSignalResolver.register(e, (event) {
+      final s = event as PointerScrollEvent;
+      _moveBy(_v, s.scrollDelta.dy);
+      if (s.scrollDelta.dx != 0) {
+        _moveBy(_h, s.scrollDelta.dx);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // Our own scrollbars only (no automatic ones in odd places).
-    final behavior = ScrollConfiguration.of(context).copyWith(scrollbars: false);
+    final behavior = ScrollConfiguration.of(
+      context,
+    ).copyWith(scrollbars: false);
+    final hasPinned =
+        widget.pinnedBody != null &&
+        widget.pinnedWidth != null &&
+        widget.pinnedWidth! > 0;
+
     return ScrollConfiguration(
       behavior: behavior,
       child: LayoutBuilder(
         builder: (context, c) {
-          final width = math.max(widget.width, c.maxWidth);
-          return Column(
+          final pinnedW = hasPinned ? widget.pinnedWidth! : 0.0;
+          final availableWidth = math.max(0.0, c.maxWidth - pinnedW);
+          final tableWidth = math.max(widget.width, availableWidth);
+
+          final mainTable = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Listener(
@@ -105,7 +154,13 @@ class _ScrollTableState extends State<ScrollTable> {
                   controller: _hHeader,
                   scrollDirection: Axis.horizontal,
                   physics: const NeverScrollableScrollPhysics(),
-                  child: SizedBox(width: width, child: widget.header),
+                  child: SizedBox(
+                    width: tableWidth,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 14),
+                      child: widget.header,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -116,7 +171,8 @@ class _ScrollTableState extends State<ScrollTable> {
                     controller: _v,
                     thumbVisibility: true,
                     // The list sits inside the sideways scroll view.
-                    notificationPredicate: (n) => n.metrics.axis == Axis.vertical,
+                    notificationPredicate: (n) =>
+                        n.metrics.axis == Axis.vertical,
                     child: Scrollbar(
                       controller: _h,
                       thumbVisibility: true,
@@ -126,10 +182,13 @@ class _ScrollTableState extends State<ScrollTable> {
                         controller: _h,
                         scrollDirection: Axis.horizontal,
                         child: SizedBox(
-                          width: width,
+                          width: tableWidth,
                           child: Padding(
                             // Room for the sideways scrollbar under the rows.
-                            padding: const EdgeInsets.only(bottom: 14, right: 14),
+                            padding: const EdgeInsets.only(
+                              bottom: 14,
+                              right: 14,
+                            ),
                             child: widget.body(_v),
                           ),
                         ),
@@ -138,6 +197,42 @@ class _ScrollTableState extends State<ScrollTable> {
                   ),
                 ),
               ),
+            ],
+          );
+
+          if (!hasPinned) {
+            return mainTable;
+          }
+
+          final pinnedColumn = SizedBox(
+            width: pinnedW,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.pinnedHeader != null)
+                  widget.pinnedHeader!
+                else
+                  const SizedBox.shrink(),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: Listener(
+                    onPointerSignal: _onPinnedSignal,
+                    child: Padding(
+                      // Match the bottom padding so pinned rows align with main table rows.
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: widget.pinnedBody!(_vPinned),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              pinnedColumn,
+              Expanded(child: mainTable),
             ],
           );
         },

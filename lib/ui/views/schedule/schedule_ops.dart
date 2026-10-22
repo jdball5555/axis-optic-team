@@ -145,9 +145,11 @@ String? availabilityConflict(
   if (windows == null || windows.any((w) => w.containsRange(start, end))) {
     return null;
   }
-  final off = _partTimeOff(user, date, timeOff)
-      .where((w) => w.overlaps(start, end))
-      .firstOrNull;
+  final off = _partTimeOff(
+    user,
+    date,
+    timeOff,
+  ).where((w) => w.overlaps(start, end)).firstOrNull;
   if (off != null) {
     return '${personName(user)} has time off ${formatRange(off.start, off.end)}.';
   }
@@ -209,7 +211,8 @@ availablePeople(
     if (overlap.isEmpty) {
       unavailable++;
     } else {
-      final full = needed.isNotEmpty && subtractWindows(needed, windows).isEmpty;
+      final full =
+          needed.isNotEmpty && subtractWindows(needed, windows).isEmpty;
       out.add((user: u, canWork: full ? null : overlap));
     }
   }
@@ -305,7 +308,8 @@ Shift _mergeTouching(Shift s) {
 
 ScheduleDay _replaceShift(ScheduleDay day, Shift updated) {
   final shifts = [
-    for (final s in day.shifts) s.id == updated.id ? _mergeTouching(updated) : s,
+    for (final s in day.shifts)
+      s.id == updated.id ? _mergeTouching(updated) : s,
   ].where((s) => s.pieces.isNotEmpty).toList();
   return day.copyWith(shifts: shifts);
 }
@@ -359,7 +363,9 @@ ScheduleDay updatePiece(
     s.copyWith(
       pieces: [
         for (final p in s.pieces)
-          p.id == pieceId ? p.copyWith(rowId: rowId, start: start, end: end) : p,
+          p.id == pieceId
+              ? p.copyWith(rowId: rowId, start: start, end: end)
+              : p,
       ],
     ),
   );
@@ -425,9 +431,8 @@ ScheduleDay splitPiece(
 ScheduleDay addRow(ScheduleDay day, ScheduleRow row) =>
     day.copyWith(rows: [...day.rows, row]);
 
-ScheduleDay replaceRow(ScheduleDay day, ScheduleRow row) => day.copyWith(
-  rows: [for (final r in day.rows) r.id == row.id ? row : r],
-);
+ScheduleDay replaceRow(ScheduleDay day, ScheduleRow row) =>
+    day.copyWith(rows: [for (final r in day.rows) r.id == row.id ? row : r]);
 
 ScheduleDay removeRow(ScheduleDay day, String rowId) => day.copyWith(
   rows: day.rows.where((r) => r.id != rowId).toList(),
@@ -489,9 +494,8 @@ bool _sameKind(ScheduleRow a, ScheduleRow b) =>
     a.allowedTitles.toSet().containsAll(b.allowedTitles) &&
     b.allowedTitles.toSet().containsAll(a.allowedTitles);
 
-bool _hasRoomFor(ScheduleRow row, List<TimeWindow> windows) => windows.every(
-  (w) => !row.windows.any((x) => x.overlaps(w.start, w.end)),
-);
+bool _hasRoomFor(ScheduleRow row, List<TimeWindow> windows) =>
+    windows.every((w) => !row.windows.any((x) => x.overlaps(w.start, w.end)));
 
 /// Adds [incoming] rows to [rows], putting each one's windows into the first
 /// existing row of the same kind that is free for all of them (so an 11–5 row
@@ -520,7 +524,8 @@ List<ScheduleRow> packRows(List<ScheduleRow> rows, List<ScheduleRow> incoming) {
 
 /// Re-packs every row of a template; returns the same rows when nothing can
 /// be combined.
-List<ScheduleRow> compactRows(List<ScheduleRow> rows) => packRows(const [], rows);
+List<ScheduleRow> compactRows(List<ScheduleRow> rows) =>
+    packRows(const [], rows);
 
 /// A [length]-minute shift inside [area] starting at [at] (snapped to 15
 /// minutes). Pulled earlier if it would run past the end of [area]; shorter
@@ -569,13 +574,15 @@ int _handoffs(ScheduleDay d) {
 bool _rowFree(ScheduleDay d, String rowId, TimeWindow w) =>
     !d.piecesInRow(rowId).any((e) => e.$2.overlaps(w.start, w.end));
 
-ScheduleDay _setPieces(ScheduleDay d, String shiftId, List<ShiftPiece> pieces) =>
-    d.copyWith(
-      shifts: [
-        for (final s in d.shifts)
-          s.id == shiftId ? s.copyWith(pieces: pieces) : s,
-      ],
-    );
+ScheduleDay _setPieces(
+  ScheduleDay d,
+  String shiftId,
+  List<ShiftPiece> pieces,
+) => d.copyWith(
+  shifts: [
+    for (final s in d.shifts) s.id == shiftId ? s.copyWith(pieces: pieces) : s,
+  ],
+);
 
 /// Puts the new shift whole into row [r]. Whatever overlaps it there is cut
 /// out of those shifts and re-placed in other rows (preferring rows lower
@@ -631,7 +638,8 @@ ScheduleDay _setPieces(ScheduleDay d, String shiftId, List<ShiftPiece> pieces) =
         subtractWindows([part], d.openGaps(row)),
       ).fold(0, (a, x) => a + x.minutes);
       final joinsOwn = shift.pieces.any(
-        (q) => q.rowId == row.id && (q.end == part.start || q.start == part.end),
+        (q) =>
+            q.rowId == row.id && (q.end == part.start || q.start == part.end),
       );
       // Higher is better for each, compared in order.
       final score = [covers, joinsOwn ? 1 : 0, j > r ? 1 : 0, -j];
@@ -719,7 +727,10 @@ bool _better(List<int> a, List<int> b) {
     consider(_insertAt(day, r, userId, w, users, traineeId: traineeId), r);
   }
   // Fallback: an extra row of its own.
-  final withExtra = addRow(day, ScheduleRow(id: newScheduleId(), label: 'Extra'));
+  final withExtra = addRow(
+    day,
+    ScheduleRow(id: newScheduleId(), label: 'Extra'),
+  );
   final extra = _insertAt(
     withExtra,
     withExtra.rows.length - 1,
@@ -728,10 +739,11 @@ bool _better(List<int> a, List<int> b) {
     users,
     traineeId: traineeId,
   );
-  consider(
-    (day: extra.day, moved: extra.moved, extraRows: extra.extraRows + 1),
-    withExtra.rows.length - 1,
-  );
+  consider((
+    day: extra.day,
+    moved: extra.moved,
+    extraRows: extra.extraRows + 1,
+  ), withExtra.rows.length - 1);
   return (day: best!.day, moved: best!.moved);
 }
 
@@ -845,7 +857,11 @@ List<Shortage> shortages(ScheduleDay day) {
         have: have,
       );
     } else {
-      out.add((window: TimeWindow(t, t + kScheduleStep), need: need, have: have));
+      out.add((
+        window: TimeWindow(t, t + kScheduleStep),
+        need: need,
+        have: have,
+      ));
     }
   }
   return out;

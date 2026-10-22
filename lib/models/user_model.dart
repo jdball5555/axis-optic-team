@@ -22,22 +22,34 @@ abstract class UserModel with _$UserModel {
     @JsonKey(name: 'avg_shifts') String? avgShifts,
     @JsonKey(name: 'pay_rate') double? payRate,
     @JsonKey(name: 'food_handlers_expiration') DateTime? foodHandlersExpiration,
-    @JsonKey(name: 'manager_permit_expiration') DateTime? managerPermitExpiration,
+    @JsonKey(name: 'manager_permit_expiration')
+    DateTime? managerPermitExpiration,
     @JsonKey(name: 'general_notes') String? generalNotes,
     @JsonKey(name: 'hiring_notes') String? hiringNotes,
     String? status,
     @JsonKey(name: 'completed_tasks') @Default([]) List<String>? completedTasks,
-    @JsonKey(name: 'completed_checklists') @Default([]) List<String>? completedChecklists,
+    @JsonKey(name: 'completed_checklists')
+    @Default([])
+    List<String>? completedChecklists,
     @Default([]) List<String>? certifications,
-    @JsonKey(name: 'history_logs') @Default([]) List<Map<String, dynamic>>? historyLogs,
-    @JsonKey(name: 'active_availability') @Default({}) Map<String, dynamic>? activeAvailability,
-    @JsonKey(name: 'assigned_checklists') @Default([]) List<String>? assignedChecklists,
-    @JsonKey(name: 'access_levels') @Default({}) Map<String, bool>? accessLevels,
+    @JsonKey(name: 'history_logs')
+    @Default([])
+    List<Map<String, dynamic>>? historyLogs,
+    @JsonKey(name: 'active_availability')
+    @Default({})
+    Map<String, dynamic>? activeAvailability,
+    @JsonKey(name: 'assigned_checklists')
+    @Default([])
+    List<String>? assignedChecklists,
+    @JsonKey(name: 'access_levels')
+    @Default({})
+    Map<String, bool>? accessLevels,
     String? role,
     @JsonKey(name: 'is_ops_only') @Default(false) bool? isOpsOnly,
   }) = _UserModel;
 
-  factory UserModel.fromJson(Map<String, dynamic> json) => _$UserModelFromJson(json);
+  factory UserModel.fromJson(Map<String, dynamic> json) =>
+      _$UserModelFromJson(json);
 }
 
 /// Status shown on the roster: "Former" once their last day (end date) has
@@ -46,14 +58,18 @@ abstract class UserModel with _$UserModel {
 String memberStatus(UserModel u, {DateTime? today}) {
   final s = (u.status ?? '').trim();
   final lower = s.toLowerCase();
-  if (lower.contains('former') || lower.contains('terminat') || lower.contains('inactive')) {
+  if (lower.contains('former') ||
+      lower.contains('terminat') ||
+      lower.contains('inactive')) {
     return s;
   }
   final end = u.endDate;
   if (end == null) return 'Active';
   final now = today ?? DateTime.now();
   final lastDay = DateTime(end.year, end.month, end.day);
-  return DateTime(now.year, now.month, now.day).isAfter(lastDay) ? 'Former' : 'Leaving';
+  return DateTime(now.year, now.month, now.day).isAfter(lastDay)
+      ? 'Former'
+      : 'Leaving';
 }
 
 /// Still part of the team (Active or Leaving). Former team members aren't

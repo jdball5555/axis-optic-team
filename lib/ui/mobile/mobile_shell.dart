@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../core/theme/app_theme.dart';
 import '../../providers/app_providers.dart';
+import '../../services/push_service.dart';
+import '../widgets/axis_loader.dart';
 import 'mobile_data.dart';
 import 'mobile_ui.dart';
+import 'promotion_page.dart';
 
 /// The phone app's tabs, in branch order (see app_router.dart).
 enum MobileTab {
@@ -19,12 +21,7 @@ enum MobileTab {
     Icons.calendar_month,
   ),
   team('/m/team', 'Team', Icons.people_outline, Icons.people),
-  roster(
-    '/m/roster',
-    'Roster',
-    Icons.view_timeline_outlined,
-    Icons.view_timeline,
-  ),
+  roster('/m/roster', 'Roster', Icons.table_chart_outlined, Icons.table_chart),
   settings('/m/settings', 'Settings', Icons.settings_outlined, Icons.settings);
 
   const MobileTab(this.path, this.label, this.icon, this.selectedIcon);
@@ -57,8 +54,115 @@ class MobileShell extends ConsumerStatefulWidget {
   ConsumerState<MobileShell> createState() => _MobileShellState();
 }
 
-class _MobileShellState extends ConsumerState<MobileShell> {
+/// The store / team member this phone's notifications are set up for.
+String? _pushSetupFor;
+
+class _MobileShellState extends ConsumerState<MobileShell>
+    with PromotionWatcher<MobileShell>, WidgetsBindingObserver {
   bool _pickingStore = false;
+
+  @override
+  void initState() {
+    super.initState();
+    PromotionWatcher.appOpened();
+    WidgetsBinding.instance.addObserver(this);
+    PushService.opened.addListener(_openedFromNotification);
+    PushService.foreground.addListener(_arrivedWhileOpen);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _openedFromNotification(),
+    );
+    // A test promotion waiting from before the app was closed.
+    TestPromotion.load().then((p) {
+      if (p != null && mounted && ref.read(promotionTestProvider) == null) {
+        ref.read(promotionTestProvider.notifier).state = p;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    PushService.opened.removeListener(_openedFromNotification);
+    PushService.foreground.removeListener(_arrivedWhileOpen);
+    super.dispose();
+  }
+
+  // Coming back to the app counts as opening it (a promotion sent while
+  // they were away plays now).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      PromotionWatcher.appOpened();
+      setState(() {});
+    }
+  }
+
+  /// A tapped notification opened the app: show the store it's about (the
+  /// promotion screen then opens by itself).
+  void _openedFromNotification() {
+    final m = PushService.opened.value;
+    if (m == null || !mounted) return;
+    PushService.opened.value = null;
+    PromotionWatcher.appOpened();
+    final storeId = m.data['store_id'];
+    if (storeId is String &&
+        ref.read(mobileStoreIdsProvider).contains(storeId) &&
+        ref.read(currentStoreIdProvider) != storeId) {
+      ref.read(currentStoreIdProvider.notifier).state = storeId;
+    }
+    setState(() {});
+  }
+
+  /// A notification came in while they're in the app: show it here.
+  void _arrivedWhileOpen() {
+    final m = PushService.foreground.value;
+    if (m == null || !mounted) return;
+    PushService.foreground.value = null;
+    final title = m.notification?.title ?? 'Axis Team';
+    final body = m.notification?.body ?? '';
+    final promotion = (m.data['type'] as String? ?? '').startsWith('promotion');
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 10),
+          content: Text(body.isEmpty ? title : '$title\n$body'),
+          action: promotion
+              ? SnackBarAction(
+                  label: 'Open',
+                  onPressed: () {
+                    PromotionWatcher.appOpened();
+                    if (mounted) setState(() {});
+                  },
+                )
+              : null,
+        ),
+      );
+  }
+
+  /// Sets up notifications for this phone (asks permission the first time),
+  /// unless they turned them off in Settings.
+  void _setUpPush(String storeId) {
+    if (!PushService.supported) return;
+    final memberId = ref.watch(myTeamRecordProvider).valueOrNull?.id;
+    if (memberId == null) return;
+    final key = (storeId: storeId, memberId: memberId);
+    final doc = ref.watch(memberDocProvider(key));
+    if (!doc.hasValue || doc.value == null) return;
+    if (doc.value!['notifications_enabled'] == false) return;
+    final id = '$storeId/$memberId';
+    if (_pushSetupFor == id) return;
+    _pushSetupFor = id;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await PushService.enable(storeId, memberId);
+      } catch (e) {
+        debugPrint('Push setup failed: $e');
+        _pushSetupFor = null;
+      }
+    });
+  }
 
   void _ensureStore(List<String> ids, String? current) {
     if (ids.isEmpty || (current != null && ids.contains(current))) return;
@@ -84,7 +188,7 @@ class _MobileShellState extends ConsumerState<MobileShell> {
     if (storeId == null || !ids.contains(storeId)) {
       final storesLoading = ref.watch(allStoresStreamProvider).isLoading;
       return Scaffold(
-        backgroundColor: c.bg,
+        backgroundColor: Colors.black,
         body: Center(
           child: ids.isEmpty && !storesLoading
               ? MEmpty(
@@ -100,10 +204,13 @@ class _MobileShellState extends ConsumerState<MobileShell> {
                     ),
                   ),
                 )
-              : CircularProgressIndicator(color: AppTheme.accent),
+              : const AxisLoader(size: 132, background: Colors.black),
         ),
       );
     }
+
+    watchPromotion();
+    _setUpPush(storeId);
 
     final access = ref.watch(mobileAccessProvider);
     final tabs = MobileTabs.visible(access);
@@ -120,53 +227,93 @@ class _MobileShellState extends ConsumerState<MobileShell> {
     return Scaffold(
       backgroundColor: c.bg,
       body: widget.navigationShell,
-      bottomNavigationBar: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: c.line.withValues(alpha: 0.7))),
-        ),
-        child: NavigationBarTheme(
-          data: NavigationBarThemeData(
-            backgroundColor: c.card,
-            surfaceTintColor: Colors.transparent,
-            indicatorColor: AppTheme.tint(AppTheme.accent),
-            height: 66,
-            labelTextStyle: WidgetStateProperty.resolveWith(
-              (states) => TextStyle(
-                fontSize: 11.5,
-                fontWeight: states.contains(WidgetState.selected)
-                    ? FontWeight.w700
-                    : FontWeight.w500,
-                color: states.contains(WidgetState.selected)
-                    ? c.title
-                    : c.muted,
-              ),
-            ),
-            iconTheme: WidgetStateProperty.resolveWith(
-              (states) => IconThemeData(
-                size: 24,
-                color: states.contains(WidgetState.selected)
-                    ? AppTheme.onTint(AppTheme.accent)
-                    : c.muted,
-              ),
-            ),
+      bottomNavigationBar: _NavBar(
+        tabs: tabs,
+        selected: selected < 0 ? 0 : selected,
+        onTap: (i) {
+          final tab = tabs[i];
+          widget.navigationShell.goBranch(
+            tab.index,
+            // Tapping the tab you're on goes back to its first page.
+            initialLocation: tab == current,
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// The tab bar: the picked tab's icon sits on a solid inverse pill.
+class _NavBar extends StatelessWidget {
+  const _NavBar({
+    required this.tabs,
+    required this.selected,
+    required this.onTap,
+  });
+  final List<MobileTab> tabs;
+  final int selected;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MColors(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: c.card,
+        border: Border(top: BorderSide(color: c.line)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: c.light ? 0.06 : 0.4),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
           ),
-          child: NavigationBar(
-            selectedIndex: selected < 0 ? 0 : selected,
-            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            onDestinationSelected: (i) {
-              final tab = tabs[i];
-              widget.navigationShell.goBranch(
-                tab.index,
-                // Tapping the tab you're on goes back to its first page.
-                initialLocation: tab == current,
-              );
-            },
-            destinations: [
-              for (final t in tabs)
-                NavigationDestination(
-                  icon: Icon(t.icon),
-                  selectedIcon: Icon(t.selectedIcon),
-                  label: t.label,
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 66,
+          child: Row(
+            children: [
+              for (var i = 0; i < tabs.length; i++)
+                Expanded(
+                  child: InkResponse(
+                    onTap: () => onTap(i),
+                    radius: 34,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          width: i == selected ? 56 : 40,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: i == selected
+                                ? c.inverse
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Icon(
+                            i == selected ? tabs[i].selectedIcon : tabs[i].icon,
+                            size: 21,
+                            color: i == selected ? c.onInverse : c.muted,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          tabs[i].label,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: i == selected
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                            color: i == selected ? c.title : c.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -181,9 +328,16 @@ Future<void> signOut(BuildContext context, WidgetRef ref) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.remove('saved_email');
   await prefs.remove('saved_password');
+  // This phone stops getting their notifications.
+  _pushSetupFor = null;
+  await PushService.signOut(
+    ref.read(currentStoreIdProvider),
+    ref.read(myTeamRecordProvider).valueOrNull?.id,
+  ).timeout(const Duration(seconds: 4), onTimeout: () {});
   try {
     await FirebaseAuth.instance.signOut();
   } catch (_) {}
+  setTeamMemberView(ref, false);
   ref.read(currentUserProvider.notifier).state = null;
   ref.read(currentStoreIdProvider.notifier).state = null;
   if (context.mounted) context.go('/auth');
@@ -203,6 +357,9 @@ class StoreChip extends ConsumerWidget {
         stores.where((s) => s['id'] == id).firstOrNull?['name'] as String? ??
         'Store';
     final canSwitch = ids.length > 1;
+    final onHero = MHero.on(context);
+    final fg = onHero ? Colors.white : c.text;
+    final dim = onHero ? Colors.white.withValues(alpha: 0.75) : c.muted;
     return GestureDetector(
       onTap: canSwitch
           ? () => showStorePicker(context, ref, ids, nameOf)
@@ -210,14 +367,18 @@ class StoreChip extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: c.card,
+          color: onHero ? Colors.white.withValues(alpha: 0.14) : c.card,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: c.line.withValues(alpha: 0.8)),
+          border: Border.all(
+            color: onHero
+                ? Colors.white.withValues(alpha: 0.3)
+                : c.line.withValues(alpha: 0.8),
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.storefront_outlined, size: 15, color: c.muted),
+            Icon(Icons.storefront_outlined, size: 15, color: dim),
             const SizedBox(width: 6),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 140),
@@ -228,13 +389,13 @@ class StoreChip extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: c.text,
+                  color: fg,
                 ),
               ),
             ),
             if (canSwitch) ...[
               const SizedBox(width: 2),
-              Icon(Icons.expand_more, size: 16, color: c.muted),
+              Icon(Icons.expand_more, size: 16, color: dim),
             ],
           ],
         ),
@@ -281,17 +442,19 @@ void showStorePicker(
                   ),
                   leading: Icon(
                     Icons.storefront_outlined,
-                    color: id == current ? AppTheme.accent : c.muted,
+                    color: id == current ? MBrand.red : c.muted,
                   ),
                   title: Text(
                     nameOf(id),
                     style: TextStyle(
-                      fontWeight: id == current ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: id == current
+                          ? FontWeight.w700
+                          : FontWeight.w500,
                       color: c.text,
                     ),
                   ),
                   trailing: id == current
-                      ? Icon(Icons.check_rounded, color: AppTheme.accent)
+                      ? Icon(Icons.check_rounded, color: MBrand.red)
                       : null,
                   onTap: () {
                     ref.read(currentStoreIdProvider.notifier).state = id;

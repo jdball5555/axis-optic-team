@@ -48,14 +48,36 @@ class _RulesDialogState extends State<_RulesDialog> {
                     '(your own instructions to the AI can still override them).',
                 AppTheme.red,
               ),
-              _locked(theme, 'Availability', 'Only when people said they can work.'),
-              _locked(theme, 'Title / tag bars', 'Only people with that title or tag.'),
-              _locked(theme, 'One shift a day', 'Short bars (Truck, Prep…) can join onto it.'),
-              _locked(theme, 'Who can train', 'Set in Schedule settings → Who can train.'),
+              _locked(
+                theme,
+                'Availability',
+                'Only when people said they can work.',
+              ),
+              _locked(
+                theme,
+                'Title / tag bars',
+                'Only people with that title or tag.',
+              ),
+              _locked(
+                theme,
+                'One shift a day',
+                'Short bars (Truck, Prep…) can join onto it.',
+              ),
+              _locked(
+                theme,
+                'Who can train',
+                'Set in Schedule settings → Who can train.',
+              ),
+              _locked(
+                theme,
+                'Training flow',
+                'When enabled in Schedule settings, new hire training steps and trainer pairings cannot be violated.',
+              ),
               _rule(
                 theme,
                 title: 'Time off',
-                subtitle: 'Approved time off always counts. Turn on to treat requested '
+                subtitle:
+                    'Approved time off always counts. Turn on to treat requested '
                     '(pending) time off as off too.',
                 hard: true,
                 value: _r.requestedOffIsOff,
@@ -64,7 +86,8 @@ class _RulesDialogState extends State<_RulesDialog> {
               _rule(
                 theme,
                 title: 'Most shifts a week',
-                subtitle: 'Nobody gets more, unless their "avg shifts" says more.',
+                subtitle:
+                    'Nobody gets more, unless their "avg shifts" says more.',
                 hard: true,
                 value: true,
                 locked: true,
@@ -72,7 +95,8 @@ class _RulesDialogState extends State<_RulesDialog> {
                   value: _r.maxShiftsPerWeek.toDouble(),
                   options: const [3, 4, 5, 6, 7],
                   suffix: 'shifts',
-                  onChanged: (v) => _set(_r.copyWith(maxShiftsPerWeek: v.round())),
+                  onChanged: (v) =>
+                      _set(_r.copyWith(maxShiftsPerWeek: v.round())),
                 ),
               ),
               _rule(
@@ -93,7 +117,8 @@ class _RulesDialogState extends State<_RulesDialog> {
               _rule(
                 theme,
                 title: 'Rest between shifts',
-                subtitle: 'Hours off between one day\'s shift and the next day\'s.',
+                subtitle:
+                    'Hours off between one day\'s shift and the next day\'s.',
                 hard: true,
                 value: _r.restOn,
                 onChanged: (v) => _set(_r.copyWith(restOn: v)),
@@ -123,7 +148,8 @@ class _RulesDialogState extends State<_RulesDialog> {
               _rule(
                 theme,
                 title: 'Minors',
-                subtitle: 'For one designation: a latest time on school nights, and most '
+                subtitle:
+                    'For one designation: a latest time on school nights, and most '
                     'hours a day.',
                 hard: true,
                 value: _r.minorsOn,
@@ -140,22 +166,47 @@ class _RulesDialogState extends State<_RulesDialog> {
               ),
               _rule(
                 theme,
-                title: 'Usual shifts a week',
-                subtitle: 'Get people close to their "avg shifts" (people under it first).',
+                title: 'Match shifts to profile',
+                subtitle:
+                    'Try to match the number of shifts a person gets a week with the shifts they want to work in their profile.',
                 value: _r.usualShifts,
-                onChanged: (v) => _set(_r.copyWith(usualShifts: v)),
+                onChanged: (v) =>
+                    _set(_r.copyWith(usualShifts: v, hoursMatchUsual: v)),
+              ),
+              _rule(
+                theme,
+                title: 'Average shift length',
+                subtitle:
+                    'Keep shifts within a target length range on average.',
+                value: _r.shiftLengthRangeOn,
+                onChanged: (v) => _set(_r.copyWith(shiftLengthRangeOn: v)),
+                setting: _rangeSelector(
+                  min: _r.minShiftHours,
+                  max: _r.maxShiftHours,
+                  minOptions: const [2, 3, 4, 5, 6],
+                  maxOptions: const [6, 7, 8, 9, 10, 11],
+                  enabled: _r.shiftLengthRangeOn,
+                  onChanged: (min, max) => _set(
+                    _r.copyWith(
+                      minShiftHours: min,
+                      maxShiftHours: max < min ? min : max,
+                    ),
+                  ),
+                ),
               ),
               _rule(
                 theme,
                 title: 'Same shifts as recent weeks',
-                subtitle: 'Keep people on the days and times they\'ve been working.',
+                subtitle:
+                    'Keep people on the days and times they\'ve been working.',
                 value: _r.consistency,
                 onChanged: (v) => _set(_r.copyWith(consistency: v)),
               ),
               _rule(
                 theme,
                 title: 'Daytime / Night',
-                subtitle: 'Daytime people in the morning, Night people in the evening.',
+                subtitle:
+                    'Daytime people in the morning, Night people in the evening.',
                 value: _r.dayNight,
                 onChanged: (v) => _set(_r.copyWith(dayNight: v)),
               ),
@@ -165,13 +216,6 @@ class _RulesDialogState extends State<_RulesDialog> {
                 subtitle: 'Nobody closes one night and opens the next morning.',
                 value: _r.avoidClopen,
                 onChanged: (v) => _set(_r.copyWith(avoidClopen: v)),
-              ),
-              _rule(
-                theme,
-                title: 'Fair hours',
-                subtitle: 'Spread hours evenly.',
-                value: _r.fairHours,
-                onChanged: (v) => _set(_r.copyWith(fairHours: v)),
               ),
               const SizedBox(height: 4),
               Text(
@@ -183,13 +227,24 @@ class _RulesDialogState extends State<_RulesDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, _r), child: const Text('Save')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _r),
+          child: const Text('Save'),
+        ),
       ],
     );
   }
 
-  Widget _section(ThemeData theme, String title, String subtitle, Color color) => Padding(
+  Widget _section(
+    ThemeData theme,
+    String title,
+    String subtitle,
+    Color color,
+  ) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,7 +254,10 @@ class _RulesDialogState extends State<_RulesDialog> {
             Container(
               width: 4,
               height: 16,
-              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
             const SizedBox(width: 8),
             Text(
@@ -213,7 +271,13 @@ class _RulesDialogState extends State<_RulesDialog> {
           ],
         ),
         const SizedBox(height: 2),
-        Text(subtitle, style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color)),
+        Text(
+          subtitle,
+          style: TextStyle(
+            fontSize: 12,
+            color: theme.textTheme.bodySmall?.color,
+          ),
+        ),
       ],
     ),
   );
@@ -226,7 +290,11 @@ class _RulesDialogState extends State<_RulesDialog> {
     ),
     child: Text(
       text,
-      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.onTint(color)),
+      style: TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.bold,
+        color: AppTheme.onTint(color),
+      ),
     ),
   );
 
@@ -279,10 +347,15 @@ class _RulesDialogState extends State<_RulesDialog> {
                           ),
                         ),
                         const SizedBox(width: 6),
-                        hard ? _tag('Hard rule', AppTheme.red) : _tag('Try to', AppTheme.accent2),
+                        hard
+                            ? _tag('Hard rule', AppTheme.red)
+                            : _tag('Try to', AppTheme.accent2),
                       ],
                     ),
-                    Text(subtitle, style: TextStyle(fontSize: 12, color: muted)),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 12, color: muted),
+                    ),
                   ],
                 ),
               ),
@@ -319,7 +392,10 @@ class _RulesDialogState extends State<_RulesDialog> {
       child: DropdownButtonFormField<double>(
         initialValue: value,
         isDense: true,
-        decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+        decoration: const InputDecoration(
+          isDense: true,
+          border: OutlineInputBorder(),
+        ),
         items: [
           for (final o in all)
             DropdownMenuItem(
@@ -329,6 +405,67 @@ class _RulesDialogState extends State<_RulesDialog> {
         ],
         onChanged: enabled ? (v) => onChanged(v ?? value) : null,
       ),
+    );
+  }
+
+  Widget _rangeSelector({
+    required double min,
+    required double max,
+    required List<double> minOptions,
+    required List<double> maxOptions,
+    bool enabled = true,
+    required void Function(double min, double max) onChanged,
+  }) {
+    final allMin = {...minOptions, min}.toList()..sort();
+    final allMax = {...maxOptions, max}.toList()..sort();
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 82,
+          child: DropdownButtonFormField<double>(
+            initialValue: min,
+            isDense: true,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            ),
+            items: [
+              for (final o in allMin)
+                DropdownMenuItem(
+                  value: o,
+                  child: Text('${o == o.roundToDouble() ? o.round() : o}h'),
+                ),
+            ],
+            onChanged: enabled ? (v) => onChanged(v ?? min, max) : null,
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4),
+          child: Text('–', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        SizedBox(
+          width: 82,
+          child: DropdownButtonFormField<double>(
+            initialValue: max,
+            isDense: true,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            ),
+            items: [
+              for (final o in allMax)
+                DropdownMenuItem(
+                  value: o,
+                  child: Text('${o == o.roundToDouble() ? o.round() : o}h'),
+                ),
+            ],
+            onChanged: enabled ? (v) => onChanged(min, v ?? max) : null,
+          ),
+        ),
+      ],
     );
   }
 
@@ -355,7 +492,10 @@ class _RulesDialogState extends State<_RulesDialog> {
                     isDense: true,
                     border: OutlineInputBorder(),
                   ),
-                  items: [for (final d in designations) DropdownMenuItem(value: d, child: Text(d))],
+                  items: [
+                    for (final d in designations)
+                      DropdownMenuItem(value: d, child: Text(d)),
+                  ],
                   onChanged: (v) => _set(_r.copyWith(minorDesignation: v)),
                 ),
               ),
@@ -387,7 +527,10 @@ class _RulesDialogState extends State<_RulesDialog> {
           const SizedBox(height: 8),
           Text(
             'School nights',
-            style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color),
+            style: TextStyle(
+              fontSize: 12,
+              color: theme.textTheme.bodySmall?.color,
+            ),
           ),
           const SizedBox(height: 4),
           Wrap(

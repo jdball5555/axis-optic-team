@@ -29,24 +29,52 @@ class SettingsEmployeeDataSummaryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Employee Data Summary', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
-                    OutlinedButton(
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final titleWidget = Text(
+                      'Employee Data Summary',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    );
+                    final manageButton = OutlinedButton(
                       onPressed: () => _showManageSummaryDialog(context),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.accent,
                         side: BorderSide(color: AppTheme.accent),
                       ),
                       child: const Text('Manage Summary'),
-                    ),
-                  ],
+                    );
+
+                    if (constraints.maxWidth < 400) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          titleWidget,
+                          const SizedBox(height: 8),
+                          manageButton,
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(child: titleWidget),
+                        const SizedBox(width: 8),
+                        manageButton,
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Select the fields that will be included in the Employee Data Summary pop-up on the team member profile page.',
-                  style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color),
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.bodySmall?.color,
+                  ),
                 ),
                 if (settings.employeeDataSummaryFields.isNotEmpty) ...[
                   const SizedBox(height: 12),
@@ -56,7 +84,9 @@ class SettingsEmployeeDataSummaryCard extends StatelessWidget {
                     children: settings.employeeDataSummaryFields.map((field) {
                       return Chip(
                         label: Text(field),
-                        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                        backgroundColor: Theme.of(
+                          context,
+                        ).scaffoldBackgroundColor,
                         side: BorderSide(color: Theme.of(context).dividerColor),
                       );
                     }).toList(),
@@ -67,11 +97,7 @@ class SettingsEmployeeDataSummaryCard extends StatelessWidget {
             ),
           ),
           if (copyButton != null)
-            Positioned(
-              bottom: 0,
-              right: 0,
-              child: copyButton!,
-            ),
+            Positioned(bottom: 0, right: 0, child: copyButton!),
         ],
       ),
     );
@@ -107,15 +133,29 @@ class SettingsEmployeeDataSummaryCard extends StatelessWidget {
           builder: (context, setDialogState) {
             return AlertDialog(
               backgroundColor: Theme.of(context).cardColor,
-              title: Text('Manage Employee Data Summary', style: TextStyle(color: Theme.of(context).textTheme.titleLarge?.color)),
+              title: Text(
+                'Manage Employee Data Summary',
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.titleLarge?.color,
+                ),
+              ),
               content: SizedBox(
                 width: 400,
+                height: (MediaQuery.sizeOf(context).height - 120).clamp(
+                  200.0,
+                  450.0,
+                ),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: allFields.map((field) {
                       return CheckboxListTile(
-                        title: Text(field, style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+                        title: Text(
+                          field,
+                          style: TextStyle(
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
+                          ),
+                        ),
                         value: selectedFields.contains(field),
                         activeColor: AppTheme.accent,
                         onChanged: (val) {
@@ -139,7 +179,11 @@ class SettingsEmployeeDataSummaryCard extends StatelessWidget {
                 ),
                 ElevatedButton(
                   onPressed: () {
-                    onUpdate(settings.copyWith(employeeDataSummaryFields: selectedFields));
+                    onUpdate(
+                      settings.copyWith(
+                        employeeDataSummaryFields: selectedFields,
+                      ),
+                    );
                     Navigator.of(context).pop();
                   },
                   style: ElevatedButton.styleFrom(

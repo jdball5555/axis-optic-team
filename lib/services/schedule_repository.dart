@@ -25,8 +25,7 @@ class ScheduleRepository {
       _db.collection('stores').doc(sid).collection('schedule_templates');
 
   /// The main schedule keeps its original location; others get their own.
-  CollectionReference<Map<String, dynamic>> get _days =>
-      boardId == kMainBoardId
+  CollectionReference<Map<String, dynamic>> get _days => boardId == kMainBoardId
       ? _store.collection('schedule_days')
       : _store.collection('schedule_boards').doc(boardId).collection('days');
 
@@ -76,7 +75,10 @@ class ScheduleRepository {
 
   /// How many days each person was on this schedule from [from] up to (not
   /// including) [before], by uid. Counts days as a trainee too.
-  Future<Map<String, Set<String>>> datesWorked(DateTime from, DateTime before) async {
+  Future<Map<String, Set<String>>> datesWorked(
+    DateTime from,
+    DateTime before,
+  ) async {
     final snap = await _days
         .where('date', isGreaterThanOrEqualTo: dateKey(from))
         .where('date', isLessThan: dateKey(before))
@@ -97,11 +99,16 @@ class ScheduleRepository {
 
   /// This week's requests (as last typed) and requests from weeks that were
   /// posted, newest first.
-  Future<({List<String> week, List<String> past})> getRequests(String weekId) async {
+  Future<({List<String> week, List<String> past})> getRequests(
+    String weekId,
+  ) async {
     final data = (await _requests.get()).data() ?? const {};
     final weeks = data['weeks'] is Map ? data['weeks'] as Map : const {};
     return (
-      week: [for (final t in (weeks[weekId] as List? ?? const [])) if (t is String) t],
+      week: [
+        for (final t in (weeks[weekId] as List? ?? const []))
+          if (t is String) t,
+      ],
       past: [
         for (final p in (data['past'] as List? ?? const []))
           if (p is Map && p['text'] is String) p['text'] as String,
@@ -110,16 +117,20 @@ class ScheduleRepository {
   }
 
   /// Saves the requests typed for a week (before it's posted).
-  Future<void> saveWeekRequests(String weekId, List<String> requests) => _requests.set({
-    'weeks': {weekId: requests},
-  }, SetOptions(merge: true));
+  Future<void> saveWeekRequests(String weekId, List<String> requests) =>
+      _requests.set({
+        'weeks': {weekId: requests},
+      }, SetOptions(merge: true));
 
   /// When a week is posted, its requests join the "From past weeks" list
   /// (newest first, no repeats, the last 40).
   Future<void> rememberWeekRequests(String weekId) async {
     final data = (await _requests.get()).data() ?? const {};
     final weeks = data['weeks'] is Map ? data['weeks'] as Map : const {};
-    final week = [for (final t in (weeks[weekId] as List? ?? const [])) if (t is String) t.trim()];
+    final week = [
+      for (final t in (weeks[weekId] as List? ?? const []))
+        if (t is String) t.trim(),
+    ];
     if (week.isEmpty) return;
     final past = [
       for (final p in (data['past'] as List? ?? const []))
@@ -129,9 +140,14 @@ class ScheduleRepository {
     final merged = <Map<String, dynamic>>[
       for (final t in week) {'text': t, 'used_at': now, 'week': weekId},
       for (final p in past)
-        if (!week.any((t) => t.toLowerCase() == (p['text'] as String).trim().toLowerCase())) p,
+        if (!week.any(
+          (t) => t.toLowerCase() == (p['text'] as String).trim().toLowerCase(),
+        ))
+          p,
     ];
-    await _requests.set({'past': merged.take(40).toList()}, SetOptions(merge: true));
+    await _requests.set({
+      'past': merged.take(40).toList(),
+    }, SetOptions(merge: true));
   }
 
   /// Removes a request from the "From past weeks" list.
@@ -152,14 +168,16 @@ class ScheduleRepository {
   Stream<Map<String, TrainingProgress>> streamTrainingProgress() =>
       _training.snapshots().map(
         (snap) => {
-          for (final d in snap.docs) d.id: TrainingProgress.fromJson(d.id, d.data()),
+          for (final d in snap.docs)
+            d.id: TrainingProgress.fromJson(d.id, d.data()),
         },
       );
 
   Future<Map<String, TrainingProgress>> getTrainingProgress() async {
     final snap = await _training.get();
     return {
-      for (final d in snap.docs) d.id: TrainingProgress.fromJson(d.id, d.data()),
+      for (final d in snap.docs)
+        d.id: TrainingProgress.fromJson(d.id, d.data()),
     };
   }
 
@@ -186,7 +204,9 @@ class ScheduleRepository {
         final list = snap.docs
             .map((d) => ScheduleTemplate.fromJson(d.id, d.data()))
             .toList();
-        list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        list.sort(
+          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        );
         return list;
       });
 
@@ -233,7 +253,8 @@ class ScheduleRepository {
         .snapshots()
         .map(
           (snap) => {
-            for (final d in snap.docs) d.id: ScheduleDay.fromJson(d.id, d.data()),
+            for (final d in snap.docs)
+              d.id: ScheduleDay.fromJson(d.id, d.data()),
           },
         );
   }
@@ -244,7 +265,9 @@ class ScheduleRepository {
         .where('date', isGreaterThanOrEqualTo: dateKey(weekStart))
         .where('date', isLessThanOrEqualTo: dateKey(addDays(weekStart, 6)))
         .get();
-    return {for (final d in snap.docs) d.id: ScheduleDay.fromJson(d.id, d.data())};
+    return {
+      for (final d in snap.docs) d.id: ScheduleDay.fromJson(d.id, d.data()),
+    };
   }
 
   Future<void> saveDay(ScheduleDay day) => _days.doc(day.date).set({
@@ -299,9 +322,9 @@ class ScheduleRepository {
         if (work.isNotEmpty) {
           final start = work.map((p) => p.start).reduce(math.min);
           final end = work.map((p) => p.end).reduce(math.max);
-          final areas = {
-            for (final p in work) ?day.rowById(p.rowId),
-          }.map((r) => r.label.isNotEmpty ? r.label : r.allowedTitles.join(', '));
+          final areas = {for (final p in work) ?day.rowById(p.rowId)}.map(
+            (r) => r.label.isNotEmpty ? r.label : r.allowedTitles.join(', '),
+          );
           final doc = {
             'date': day.date,
             'scheduled_start': hhmm(start),
@@ -342,9 +365,11 @@ class ScheduleRepository {
 
   // --- Time off -------------------------------------------------------------
 
-  Stream<List<TimeOffEntry>> streamApprovedTimeOff() => _streamTimeOff('approved');
+  Stream<List<TimeOffEntry>> streamApprovedTimeOff() =>
+      _streamTimeOff('approved');
 
-  Stream<List<TimeOffEntry>> streamPendingTimeOff() => _streamTimeOff('pending');
+  Stream<List<TimeOffEntry>> streamPendingTimeOff() =>
+      _streamTimeOff('pending');
 
   Stream<List<TimeOffEntry>> _streamTimeOff(String status) => _store
       .collection('time_off_requests')
@@ -417,7 +442,8 @@ final selectedShiftBoardProvider = StateProvider.family<String?, String>(
 );
 
 final scheduleConfigProvider = StreamProvider.family<ScheduleConfig, String>(
-  (ref, storeId) => ref.watch(scheduleRepositoryProvider(storeId)).streamConfig(),
+  (ref, storeId) =>
+      ref.watch(scheduleRepositoryProvider(storeId)).streamConfig(),
 );
 
 final shiftConfigProvider = StreamProvider.family<ShiftConfig, String>(
@@ -435,15 +461,18 @@ typedef PriorDaysKey = ({
 /// Days someone was scheduled before a date (for the training flow).
 final scheduledDaysBeforeProvider = FutureProvider.family<int, PriorDaysKey>(
   (ref, key) => ref
-      .watch(boardRepositoryProvider((storeId: key.storeId, boardId: key.boardId)))
+      .watch(
+        boardRepositoryProvider((storeId: key.storeId, boardId: key.boardId)),
+      )
       .scheduledDaysBefore(key.userId, key.date),
 );
 
 /// Everyone's reviewed training progress for a store, by member id.
 final trainingProgressProvider =
     StreamProvider.family<Map<String, TrainingProgress>, String>(
-      (ref, storeId) =>
-          ref.watch(scheduleRepositoryProvider(storeId)).streamTrainingProgress(),
+      (ref, storeId) => ref
+          .watch(scheduleRepositoryProvider(storeId))
+          .streamTrainingProgress(),
     );
 
 typedef DaysBetweenKey = ({
@@ -460,7 +489,9 @@ final scheduledDaysBetweenProvider = FutureProvider.family<int, DaysBetweenKey>(
   (ref, key) async {
     if (key.from.compareTo(key.before) >= 0) return 0;
     final worked = await ref
-        .watch(boardRepositoryProvider((storeId: key.storeId, boardId: key.boardId)))
+        .watch(
+          boardRepositoryProvider((storeId: key.storeId, boardId: key.boardId)),
+        )
         .datesWorked(DateTime.parse(key.from), DateTime.parse(key.before));
     return worked[key.userId]?.length ?? 0;
   },
@@ -475,21 +506,30 @@ final scheduleTemplatesProvider =
 typedef ScheduleWeekKey = ({String storeId, String weekStart, String boardId});
 
 final scheduleWeekProvider =
-    StreamProvider.family<Map<String, ScheduleDay>, ScheduleWeekKey>((ref, key) {
+    StreamProvider.family<Map<String, ScheduleDay>, ScheduleWeekKey>((
+      ref,
+      key,
+    ) {
       final start = DateTime.parse(key.weekStart);
       return ref
           .watch(
-            boardRepositoryProvider((storeId: key.storeId, boardId: key.boardId)),
+            boardRepositoryProvider((
+              storeId: key.storeId,
+              boardId: key.boardId,
+            )),
           )
           .streamWeek(start);
     });
 
-final approvedTimeOffProvider = StreamProvider.family<List<TimeOffEntry>, String>(
-  (ref, storeId) =>
-      ref.watch(scheduleRepositoryProvider(storeId)).streamApprovedTimeOff(),
-);
+final approvedTimeOffProvider =
+    StreamProvider.family<List<TimeOffEntry>, String>(
+      (ref, storeId) => ref
+          .watch(scheduleRepositoryProvider(storeId))
+          .streamApprovedTimeOff(),
+    );
 
-final pendingTimeOffProvider = StreamProvider.family<List<TimeOffEntry>, String>(
-  (ref, storeId) =>
-      ref.watch(scheduleRepositoryProvider(storeId)).streamPendingTimeOff(),
-);
+final pendingTimeOffProvider =
+    StreamProvider.family<List<TimeOffEntry>, String>(
+      (ref, storeId) =>
+          ref.watch(scheduleRepositoryProvider(storeId)).streamPendingTimeOff(),
+    );

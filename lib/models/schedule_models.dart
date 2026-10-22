@@ -40,7 +40,9 @@ String formatMinutes(int minutes, {bool compact = false}) {
   final String text;
   if (compact) {
     final suffix = pm ? 'p' : 'a';
-    text = min == 0 ? '$h$suffix' : '$h:${min.toString().padLeft(2, '0')}$suffix';
+    text = min == 0
+        ? '$h$suffix'
+        : '$h:${min.toString().padLeft(2, '0')}$suffix';
   } else {
     text = '$h:${min.toString().padLeft(2, '0')} ${pm ? 'PM' : 'AM'}';
   }
@@ -65,7 +67,8 @@ String dateKey(DateTime d) =>
 DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
 /// Calendar-day math (safe across daylight-saving changes, unlike Duration).
-DateTime addDays(DateTime d, int days) => DateTime(d.year, d.month, d.day + days);
+DateTime addDays(DateTime d, int days) =>
+    DateTime(d.year, d.month, d.day + days);
 
 /// First day of the schedule week containing [date].
 /// [weekStart] uses DateTime weekday numbers (Monday = 1 ... Sunday = 7).
@@ -209,7 +212,8 @@ class ScheduleRow {
     label: j['label'] as String? ?? '',
     windows: _asMapList(j['windows']).map(TimeWindow.fromJson).toList()
       ..sort((a, b) => a.start.compareTo(b.start)),
-    allowedTitles: (j['allowed_titles'] as List?)?.whereType<String>().toList() ??
+    allowedTitles:
+        (j['allowed_titles'] as List?)?.whereType<String>().toList() ??
         const [],
   );
 
@@ -385,10 +389,17 @@ class Shift {
   bool get isTraining => traineeId != null && traineeId!.isNotEmpty;
 
   /// On the floor (in template rows) vs admin time.
-  List<ShiftPiece> get workPieces => [for (final p in pieces) if (!p.admin) p];
-  List<ShiftPiece> get adminPieces => [for (final p in pieces) if (p.admin) p];
+  List<ShiftPiece> get workPieces => [
+    for (final p in pieces)
+      if (!p.admin) p,
+  ];
+  List<ShiftPiece> get adminPieces => [
+    for (final p in pieces)
+      if (p.admin) p,
+  ];
   bool get hasAdmin => pieces.any((p) => p.admin);
-  int get start => pieces.isEmpty ? 0 : pieces.map((p) => p.start).reduce(math.min);
+  int get start =>
+      pieces.isEmpty ? 0 : pieces.map((p) => p.start).reduce(math.min);
   int get end => pieces.isEmpty ? 0 : pieces.map((p) => p.end).reduce(math.max);
   int get minutes => pieces.fold(0, (a, p) => a + p.minutes);
 
@@ -420,7 +431,9 @@ class Shift {
     final legacy = j['position_id'] as String?;
     if (positions.isEmpty && legacy != null && pieces.isNotEmpty) {
       positions = [
-        for (final w in mergeWindows(pieces.map((p) => TimeWindow(p.start, p.end))))
+        for (final w in mergeWindows(
+          pieces.map((p) => TimeWindow(p.start, p.end)),
+        ))
           PositionSegment(positionId: legacy, start: w.start, end: w.end),
       ];
     }
@@ -580,11 +593,14 @@ class TrainingDay {
 
   const TrainingDay({this.training = true, this.positionId});
 
-  TrainingDay copyWith({bool? training, String? positionId, bool clearPosition = false}) =>
-      TrainingDay(
-        training: training ?? this.training,
-        positionId: clearPosition ? null : (positionId ?? this.positionId),
-      );
+  TrainingDay copyWith({
+    bool? training,
+    String? positionId,
+    bool clearPosition = false,
+  }) => TrainingDay(
+    training: training ?? this.training,
+    positionId: clearPosition ? null : (positionId ?? this.positionId),
+  );
 
   factory TrainingDay.fromJson(Map<String, dynamic> j) => TrainingDay(
     training: j['training'] != false,
@@ -636,7 +652,8 @@ class ScheduleBoard {
 
   /// This schedule's share of an older store-wide position list (before
   /// positions belonged to shift boards), in priority order.
-  List<ShiftPosition> positionsIn(List<ShiftPosition> positions) => positionIds.isEmpty
+  List<ShiftPosition> positionsIn(List<ShiftPosition> positions) =>
+      positionIds.isEmpty
       ? positions
       : positions
             .where(
@@ -710,7 +727,15 @@ class ScheduleRules {
   /// Nobody closes one night and opens the next morning.
   final bool avoidClopen;
 
-  /// Spread hours fairly.
+  /// Get people close to their target weekly hours based on usual shifts.
+  final bool hoursMatchUsual;
+
+  /// Keep shifts within a target average length range (e.g. 3 to 9 hours).
+  final bool shiftLengthRangeOn;
+  final double minShiftHours;
+  final double maxShiftHours;
+
+  /// Legacy field kept for backward compatibility (superseded by hoursMatchUsual).
   final bool fairHours;
 
   const ScheduleRules({
@@ -731,7 +756,11 @@ class ScheduleRules {
     this.consistency = true,
     this.dayNight = true,
     this.avoidClopen = true,
-    this.fairHours = true,
+    this.hoursMatchUsual = false,
+    this.shiftLengthRangeOn = false,
+    this.minShiftHours = 3,
+    this.maxShiftHours = 9,
+    this.fairHours = false,
   });
 
   ScheduleRules copyWith({
@@ -752,6 +781,10 @@ class ScheduleRules {
     bool? consistency,
     bool? dayNight,
     bool? avoidClopen,
+    bool? hoursMatchUsual,
+    bool? shiftLengthRangeOn,
+    double? minShiftHours,
+    double? maxShiftHours,
     bool? fairHours,
   }) => ScheduleRules(
     maxShiftsPerWeek: maxShiftsPerWeek ?? this.maxShiftsPerWeek,
@@ -771,6 +804,10 @@ class ScheduleRules {
     consistency: consistency ?? this.consistency,
     dayNight: dayNight ?? this.dayNight,
     avoidClopen: avoidClopen ?? this.avoidClopen,
+    hoursMatchUsual: hoursMatchUsual ?? this.hoursMatchUsual,
+    shiftLengthRangeOn: shiftLengthRangeOn ?? this.shiftLengthRangeOn,
+    minShiftHours: minShiftHours ?? this.minShiftHours,
+    maxShiftHours: maxShiftHours ?? this.maxShiftHours,
     fairHours: fairHours ?? this.fairHours,
   );
 
@@ -780,7 +817,10 @@ class ScheduleRules {
     bool b(String k, bool v) => j[k] is bool ? j[k] as bool : v;
     double n(String k, double v) => j[k] is num ? (j[k] as num).toDouble() : v;
     return ScheduleRules(
-      maxShiftsPerWeek: _asInt(j['max_shifts_per_week'], d.maxShiftsPerWeek).clamp(1, 7),
+      maxShiftsPerWeek: _asInt(
+        j['max_shifts_per_week'],
+        d.maxShiftsPerWeek,
+      ).clamp(1, 7),
       requestedOffIsOff: b('requested_off_is_off', d.requestedOffIsOff),
       maxHoursPerDayOn: b('max_hours_per_day_on', d.maxHoursPerDayOn),
       maxHoursPerDay: n('max_hours_per_day', d.maxHoursPerDay),
@@ -792,13 +832,23 @@ class ScheduleRules {
       minorDesignation: j['minor_designation'] as String? ?? d.minorDesignation,
       minorLatestEnd: _asInt(j['minor_latest_end'], d.minorLatestEnd),
       schoolNights:
-          (j['school_nights'] as List?)?.whereType<num>().map((e) => e.toInt()).toList() ??
+          (j['school_nights'] as List?)
+              ?.whereType<num>()
+              .map((e) => e.toInt())
+              .toList() ??
           d.schoolNights,
       minorMaxHoursPerDay: n('minor_max_hours_per_day', d.minorMaxHoursPerDay),
       usualShifts: b('usual_shifts', d.usualShifts),
       consistency: b('consistency', d.consistency),
       dayNight: b('day_night', d.dayNight),
       avoidClopen: b('avoid_clopen', d.avoidClopen),
+      hoursMatchUsual: b(
+        'hours_match_usual',
+        b('fair_hours', d.hoursMatchUsual),
+      ),
+      shiftLengthRangeOn: b('shift_length_range_on', d.shiftLengthRangeOn),
+      minShiftHours: n('min_shift_hours', d.minShiftHours),
+      maxShiftHours: n('max_shift_hours', d.maxShiftHours),
       fairHours: b('fair_hours', d.fairHours),
     );
   }
@@ -821,6 +871,10 @@ class ScheduleRules {
     'consistency': consistency,
     'day_night': dayNight,
     'avoid_clopen': avoidClopen,
+    'hours_match_usual': hoursMatchUsual,
+    'shift_length_range_on': shiftLengthRangeOn,
+    'min_shift_hours': minShiftHours,
+    'max_shift_hours': maxShiftHours,
     'fair_hours': fairHours,
   };
 }
@@ -894,12 +948,17 @@ class ScheduleConfig {
       minTitleEnabled: j?['min_title_enabled'] == true,
       minTitle: j?['min_title'] as String?,
       trainingFlowEnabled: j?['training_flow_enabled'] == true,
-      trainingDays: _asMapList(j?['training_days']).map(TrainingDay.fromJson).toList(),
+      trainingDays: _asMapList(
+        j?['training_days'],
+      ).map(TrainingDay.fromJson).toList(),
       trainerTags:
-          (j?['trainer_tags'] as List?)?.whereType<String>().toList() ?? const [],
+          (j?['trainer_tags'] as List?)?.whereType<String>().toList() ??
+          const [],
       boards: _asMapList(j?['boards']).map(ScheduleBoard.fromJson).toList(),
       rules: ScheduleRules.fromJson(
-        j?['rules'] is Map ? Map<String, dynamic>.from(j!['rules'] as Map) : null,
+        j?['rules'] is Map
+            ? Map<String, dynamic>.from(j!['rules'] as Map)
+            : null,
       ),
     );
   }
@@ -922,13 +981,24 @@ class ScheduleConfig {
 class ShiftPosition {
   final String id;
   final String name;
+  final double? x;
+  final double? y;
 
-  const ShiftPosition({required this.id, required this.name});
+  const ShiftPosition({required this.id, required this.name, this.x, this.y});
 
-  ShiftPosition copyWith({String? name}) =>
-      ShiftPosition(id: id, name: name ?? this.name);
+  ShiftPosition copyWith({String? name, double? x, double? y}) => ShiftPosition(
+    id: id,
+    name: name ?? this.name,
+    x: x ?? this.x,
+    y: y ?? this.y,
+  );
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name};
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    if (x != null) 'x': x,
+    if (y != null) 'y': y,
+  };
 }
 
 List<ShiftPosition> _positionsFrom(dynamic v) => [
@@ -940,6 +1010,8 @@ List<ShiftPosition> _positionsFrom(dynamic v) => [
       ShiftPosition(
         id: k == 1 ? (m['id'] as String? ?? newScheduleId()) : '${m['id']}#$k',
         name: k == 1 ? (m['name'] as String? ?? '') : '${m['name'] ?? ''} $k',
+        x: (m['x'] as num?)?.toDouble(),
+        y: (m['y'] as num?)?.toDouble(),
       ),
 ];
 
@@ -1051,7 +1123,9 @@ class ShiftConfig {
 
   /// The board showing schedule [scheduleId], if any.
   ShiftBoard? boardForSchedule(ScheduleConfig schedules, String scheduleId) =>
-      boardsFor(schedules).where((b) => b.scheduleIds.contains(scheduleId)).firstOrNull;
+      boardsFor(
+        schedules,
+      ).where((b) => b.scheduleIds.contains(scheduleId)).firstOrNull;
 
   /// Every position on any board (and older ones), by id.
   Map<String, ShiftPosition> get _byId => {
@@ -1075,10 +1149,16 @@ class ShiftConfig {
       scheduleBoards: {
         if (per is Map)
           for (final e in per.entries)
-            if (e.key is String && e.value is Map)
-              e.key as String: _positionsFrom((e.value as Map)['positions']),
+            if (e.key is String)
+              e.key as String: e.value is Map
+                  ? _positionsFrom((e.value as Map)['positions'])
+                  : (e.value is List
+                        ? _positionsFrom(e.value)
+                        : const <ShiftPosition>[]),
       },
-      customBoards: _asMapList(j?['custom_boards']).map(ShiftBoard.fromJson).toList(),
+      customBoards: _asMapList(
+        j?['custom_boards'],
+      ).map(ShiftBoard.fromJson).toList(),
       positions: _positionsFrom(j?['positions']),
     );
   }
@@ -1142,13 +1222,16 @@ class TrainingProgress {
     this.asOf,
   });
 
-  TrainingProgress copyWith({Set<int>? done, bool? notInTraining, String? asOf}) =>
-      TrainingProgress(
-        userId: userId,
-        done: done ?? this.done,
-        notInTraining: notInTraining ?? this.notInTraining,
-        asOf: asOf ?? this.asOf,
-      );
+  TrainingProgress copyWith({
+    Set<int>? done,
+    bool? notInTraining,
+    String? asOf,
+  }) => TrainingProgress(
+    userId: userId,
+    done: done ?? this.done,
+    notInTraining: notInTraining ?? this.notInTraining,
+    asOf: asOf ?? this.asOf,
+  );
 
   factory TrainingProgress.fromJson(String userId, Map<String, dynamic> j) =>
       TrainingProgress(

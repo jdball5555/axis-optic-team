@@ -34,53 +34,60 @@ class _DashboardCardState extends State<DashboardCard> {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
-      child: NotificationListener<ScrollNotification>(
-        onNotification: (notification) => true, // Stop bubbling
-        child: Scrollbar(
-          controller: _scrollController,
-          child: Listener(
-            onPointerSignal: (PointerSignalEvent event) {
-              if (event is PointerScrollEvent) {
-                GestureBinding.instance.pointerSignalResolver.register(
-                  event,
-                  (PointerSignalEvent e) {},
-                );
-              }
-            },
-            child: ListView(
-              controller: _scrollController,
-              shrinkWrap: true,
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              children: [
-                Row(
-                  children: [
-                    if (widget.icon != null) ...[
-                      Icon(
-                        widget.icon,
-                        size: 16,
-                        color:
-                            widget.iconColor ??
-                            Theme.of(context).textTheme.bodySmall?.color,
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(
-                      child: Text(
-                        widget.title,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).textTheme.titleLarge?.color,
+      // Stop this list's scroll (and size-change) messages from reaching the
+      // page's scrollbars.
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: (notification) => true,
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (notification) => true, // Stop bubbling
+          child: Scrollbar(
+            controller: _scrollController,
+            child: Listener(
+              onPointerSignal: (PointerSignalEvent event) {
+                if (event is PointerScrollEvent) {
+                  GestureBinding.instance.pointerSignalResolver.register(
+                    event,
+                    (PointerSignalEvent e) {},
+                  );
+                }
+              },
+              child: ListView(
+                controller: _scrollController,
+                shrinkWrap: true,
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                children: [
+                  Row(
+                    children: [
+                      if (widget.icon != null) ...[
+                        Icon(
+                          widget.icon,
+                          size: 16,
+                          color:
+                              widget.iconColor ??
+                              Theme.of(context).textTheme.bodySmall?.color,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(
+                        child: Text(
+                          widget.title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(
+                              context,
+                            ).textTheme.titleLarge?.color,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                widget.child,
-              ],
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  widget.child,
+                ],
+              ),
             ),
           ),
         ),

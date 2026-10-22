@@ -10,7 +10,9 @@ class FeatureToggleNotifier extends Notifier<bool> {
   bool build() {
     final settings = ref.watch(storeSettingsProvider).valueOrNull;
     if (settings == null) return false;
-    return isSchedule ? settings.isScheduleEnabled : settings.isShiftBoardEnabled;
+    return isSchedule
+        ? settings.isScheduleEnabled
+        : settings.isShiftBoardEnabled;
   }
 
   Future<void> toggle(bool value) async {
@@ -20,10 +22,22 @@ class FeatureToggleNotifier extends Notifier<bool> {
       final updatedSettings = isSchedule
           ? settings.copyWith(isScheduleEnabled: value)
           : settings.copyWith(isShiftBoardEnabled: value);
-      await ref.read(firestoreServiceProvider).updateStoreSettings(updatedSettings);
+      await ref
+          .read(firestoreServiceProvider)
+          .updateStoreSettings(updatedSettings);
     }
   }
 }
 
-final scheduleFeatureProvider = NotifierProvider<FeatureToggleNotifier, bool>(() => FeatureToggleNotifier(true));
-final shiftFeatureProvider = NotifierProvider<FeatureToggleNotifier, bool>(() => FeatureToggleNotifier(false));
+final scheduleFeatureProvider = NotifierProvider<FeatureToggleNotifier, bool>(
+  () => FeatureToggleNotifier(true),
+);
+final shiftFeatureProvider = NotifierProvider<FeatureToggleNotifier, bool>(
+  () => FeatureToggleNotifier(false),
+);
+
+final teamMemberAccountsFeatureProvider = Provider<bool>((ref) {
+  final isSchedule = ref.watch(scheduleFeatureProvider);
+  final isShift = ref.watch(shiftFeatureProvider);
+  return isSchedule || isShift;
+});

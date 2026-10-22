@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../models/schedule_models.dart';
@@ -11,8 +12,10 @@ import '../../providers/app_providers.dart';
 import '../../services/schedule_repository.dart';
 import 'schedule/position_ops.dart';
 import 'schedule/shift_board_settings_dialog.dart';
+import 'schedule/shift_layout_customizer.dart';
 import 'schedule/schedule_common.dart';
 import 'schedule/training_flow.dart';
+import 'member_detail_view.dart' show showMemberProfileDialog;
 
 /// Shift page: who's on which position, hour by hour. Pick a day with the
 /// arrows and an hour from the tiles; drag people onto position tiles (they
@@ -167,10 +170,14 @@ class _ShiftViewState extends ConsumerState<ShiftView> {
         const ShiftConfig();
     final boards = shiftConfig.boardsFor(config);
     final selected = ref.watch(selectedShiftBoardProvider(storeId));
-    final scheduleOnPage = config.boardById(ref.watch(selectedBoardProvider(storeId))).id;
+    final scheduleOnPage = config
+        .boardById(ref.watch(selectedBoardProvider(storeId)))
+        .id;
     final board =
         boards.where((b) => b.id == selected).firstOrNull ??
-        boards.where((b) => b.scheduleIds.contains(scheduleOnPage)).firstOrNull ??
+        boards
+            .where((b) => b.scheduleIds.contains(scheduleOnPage))
+            .firstOrNull ??
         boards.firstOrNull ??
         const ShiftBoard(id: '', name: 'Board');
     final positions = board.positions;
@@ -188,7 +195,8 @@ class _ShiftViewState extends ConsumerState<ShiftView> {
       );
       if (weekAsync.isLoading && !weekAsync.hasValue) loading = true;
       sources[sid] =
-          weekAsync.valueOrNull?[dateKey(_date)] ?? ScheduleDay.empty(dateKey(_date));
+          weekAsync.valueOrNull?[dateKey(_date)] ??
+          ScheduleDay.empty(dateKey(_date));
     }
     final merged = mergeBoardDay(dateKey(_date), sources);
     _sources = sources;
@@ -259,9 +267,7 @@ class _ShiftViewState extends ConsumerState<ShiftView> {
       if (shift == null) return;
       final from = refMinute(shift) ?? at;
       if (position != null && !fitsPositionFrom(day, shift, position, from)) {
-        _snack(
-          '${position.name} is taken from ${formatMinutes(from)} on.',
-        );
+        _snack('${position.name} is taken from ${formatMinutes(from)} on.');
         return;
       }
       _save(assignPositionFrom(day, shiftId, position?.id, from));
@@ -363,7 +369,10 @@ class _ShiftViewState extends ConsumerState<ShiftView> {
                             placed: placed,
                             admin: [
                               for (final s in day.shifts)
-                                if (s.adminPieces.any((p) => p.overlaps(at, at + 60))) s,
+                                if (s.adminPieces.any(
+                                  (p) => p.overlaps(at, at + 60),
+                                ))
+                                  s,
                             ],
                             ctx: ctx,
                             onUnassign: (id) => place(id, null),
@@ -409,7 +418,8 @@ class _ShiftViewState extends ConsumerState<ShiftView> {
             selectedId: board.id,
             tooltip: 'Switch board',
             onChanged: (id) => setState(() {
-              ref.read(selectedShiftBoardProvider(_storeId).notifier).state = id;
+              ref.read(selectedShiftBoardProvider(_storeId).notifier).state =
+                  id;
             }),
           ),
           const SizedBox(width: 8),
@@ -505,6 +515,26 @@ class _ShiftViewState extends ConsumerState<ShiftView> {
               child: const Text('Take everyone off their positions'),
             ),
           ],
+        ),
+        IconButton(
+          tooltip: 'Customize tile layout (Grid)',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => showShiftLayoutCustomizer(
+            context,
+            config: shiftConfig,
+            board: board,
+            schedules: config,
+            onSave: (c) async {
+              try {
+                await ref
+                    .read(scheduleRepositoryProvider(_storeId))
+                    .saveShiftConfig(c);
+              } catch (_) {
+                _snack('Couldn\'t save tile layout. Please try again.');
+              }
+            },
+          ),
+          icon: const Icon(Icons.dashboard_customize_outlined),
         ),
         IconButton(
           tooltip: 'Shift board settings',
@@ -851,31 +881,52 @@ class _WorkingPanel extends StatelessWidget {
                     for (final s in admin)
                       Container(
                         margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: theme.dividerColor),
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.assignment_outlined, size: 18, color: muted),
+                            Icon(
+                              Icons.assignment_outlined,
+                              size: 18,
+                              color: muted,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    personName(ctx.users[s.userId], short: true),
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: theme.textTheme.bodyLarge?.color,
+                                  InkWell(
+                                    onTap: ctx.users[s.userId]?.id != null
+                                        ? () => context.go(
+                                            '/member/${ctx.users[s.userId]!.id}?from=/shift',
+                                          )
+                                        : null,
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Text(
+                                      personName(
+                                        ctx.users[s.userId],
+                                        short: true,
+                                      ),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: theme.textTheme.bodyLarge?.color,
+                                      ),
                                     ),
                                   ),
                                   Text(
                                     'Scheduled admin time · '
                                     '${s.adminPieces.map((p) => formatRange(p.start, p.end)).join(', ')} · '
                                     'not on the floor',
-                                    style: TextStyle(fontSize: 12, color: muted),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: muted,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -915,29 +966,75 @@ class _PositionBoard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasCustomCoords = positions.any((p) => p.x != null && p.y != null);
+
     return LayoutBuilder(
       builder: (context, c) {
-        const gap = 10.0;
-        final cols = (c.maxWidth / 280).floor().clamp(1, 6);
-        final tileW = (c.maxWidth - gap * (cols - 1)) / cols;
-        return SingleChildScrollView(
-          child: Wrap(
-            spacing: gap,
-            runSpacing: gap,
-            children: [
-              for (var i = 0; i < positions.length; i++)
-                SizedBox(
-                  width: tileW,
-                  child: _PositionTile(
-                    rank: i + 1,
-                    position: positions[i],
-                    ctx: ctx,
-                    hour: hour,
-                    onDrop: (id) => onDrop(id, positions[i]),
-                    onUnassign: onUnassign,
-                  ),
+        if (hasCustomCoords) {
+          double maxX = c.maxWidth;
+          double maxY = c.maxHeight;
+          for (final p in positions) {
+            final x = (p.x ?? 0.0) + 220.0;
+            final y = (p.y ?? 0.0) + 70.0;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+          }
+
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: SizedBox(
+                width: maxX,
+                height: maxY,
+                child: Stack(
+                  children: [
+                    for (var i = 0; i < positions.length; i++)
+                      Positioned(
+                        key: ValueKey(positions[i].id),
+                        left: positions[i].x ?? (50.0 + (i % 4) * 250.0),
+                        top: positions[i].y ?? (50.0 + (i ~/ 4) * 100.0),
+                        width: 200,
+                        height: 50.0,
+                        child: _PositionTile(
+                          rank: i + 1,
+                          position: positions[i],
+                          ctx: ctx,
+                          hour: hour,
+                          onDrop: (id) => onDrop(id, positions[i]),
+                          onUnassign: onUnassign,
+                        ),
+                      ),
+                  ],
                 ),
-            ],
+              ),
+            ),
+          );
+        }
+
+        // Responsive wrap of compact tiles if no coordinates were saved yet: side-by-side
+        return SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < positions.length; i++)
+                  SizedBox(
+                    width: 200,
+                    height: 50.0,
+                    child: _PositionTile(
+                      rank: i + 1,
+                      position: positions[i],
+                      ctx: ctx,
+                      hour: hour,
+                      onDrop: (id) => onDrop(id, positions[i]),
+                      onUnassign: onUnassign,
+                    ),
+                  ),
+              ],
+            ),
           ),
         );
       },
@@ -972,12 +1069,6 @@ class _PositionTile extends StatelessWidget {
       final m = refMinute(s);
       return m != null && positionAt(s, m) == position.id;
     }).toList()..sort((a, b) => a.start.compareTo(b.start));
-    final coverage = positionCoverage(
-      day,
-      position.id,
-      ctx.dayStart,
-      ctx.dayEnd,
-    );
 
     bool canTake(Shift s) {
       final m = refMinute(s);
@@ -986,132 +1077,215 @@ class _PositionTile extends StatelessWidget {
           fitsPositionFrom(day, s, position, m);
     }
 
-    return DragTarget<_ShiftDrag>(
-      onWillAcceptWithDetails: (d) {
-        final s = day.shiftById(d.data.shiftId);
-        return s != null && canTake(s);
-      },
-      onAcceptWithDetails: (d) => onDrop(d.data.shiftId),
-      builder: (context, candidate, rejectedData) {
-        // Someone dragged around inside their own tile isn't a rejection.
-        final rejected = rejectedData.whereType<_ShiftDrag>().where((d) {
-          final s = day.shiftById(d.shiftId);
-          if (s == null) return false;
-          final m = refMinute(s);
-          return m == null || positionAt(s, m) != position.id;
-        }).toList();
-        final accent = candidate.isNotEmpty
-            ? AppTheme.green
-            : (rejected.isNotEmpty ? AppTheme.red : null);
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          decoration: BoxDecoration(
-            color:
-                accent?.withValues(alpha: 0.08) ??
-                theme.scaffoldBackgroundColor,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: accent ?? theme.dividerColor,
-              width: accent != null ? 1.5 : 1,
-            ),
-          ),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
+    if (here.isEmpty) {
+      return DragTarget<_ShiftDrag>(
+        onWillAcceptWithDetails: (d) {
+          final s = day.shiftById(d.data.shiftId);
+          return s != null && canTake(s);
+        },
+        onAcceptWithDetails: (d) => onDrop(d.data.shiftId),
+        builder: (context, candidate, rejectedData) {
+          final isHovered = candidate.isNotEmpty;
+          final rejected = rejectedData.whereType<_ShiftDrag>().where((d) {
+            final s = day.shiftById(d.shiftId);
+            if (s == null) return false;
+            final m = refMinute(s);
+            return m == null || positionAt(s, m) != position.id;
+          }).toList();
+          final isRejected = rejected.isNotEmpty;
+
+          return Tooltip(
+            message: isRejected
+                ? 'Full during part of that time'
+                : 'Drop someone here (from ${hourLabel(hour)})',
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              height: 50,
+              decoration: BoxDecoration(
+                color: isHovered
+                    ? AppTheme.green.withValues(alpha: 0.1)
+                    : isRejected
+                    ? AppTheme.red.withValues(alpha: 0.08)
+                    : theme.cardColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isHovered
+                      ? AppTheme.green
+                      : isRejected
+                      ? AppTheme.red
+                      : theme.dividerColor.withValues(alpha: 0.7),
+                  width: (isHovered || isRejected) ? 1.8 : 1,
+                ),
+                boxShadow: isHovered
+                    ? [
+                        BoxShadow(
+                          color: AppTheme.green.withValues(alpha: 0.15),
+                          blurRadius: 8,
+                        ),
+                      ]
+                    : null,
+              ),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 24,
-                    height: 24,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppTheme.tint(AppTheme.accent2),
-                      borderRadius: BorderRadius.circular(7),
-                    ),
-                    child: Text(
-                      '$rank',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.onTint(AppTheme.accent2),
-                      ),
-                    ),
+                  Icon(
+                    Icons.add,
+                    size: 14,
+                    color: isHovered
+                        ? AppTheme.green
+                        : isRejected
+                        ? AppTheme.red
+                        : muted?.withValues(alpha: 0.5),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
+                  const SizedBox(width: 6),
+                  Flexible(
                     child: Text(
                       position.name.isEmpty ? 'Untitled' : position.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: theme.textTheme.titleLarge?.color,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isHovered
+                            ? AppTheme.green
+                            : isRejected
+                            ? AppTheme.red
+                            : theme.textTheme.bodyMedium?.color?.withValues(
+                                alpha: 0.8,
+                              ),
                       ),
-                    ),
-                  ),
-                  Text(
-                    here.isEmpty ? 'Open' : 'Filled',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: here.isEmpty ? muted : AppTheme.accent2,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              _CoverageBar(
-                coverage: coverage,
-                start: ctx.dayStart,
-                end: ctx.dayEnd,
-                marker: hour,
-              ),
-              const SizedBox(height: 8),
-              if (here.isEmpty)
-                Container(
-                  height: 50,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: theme.dividerColor),
-                    color: theme.dividerColor.withValues(alpha: 0.12),
-                  ),
-                  child: Text(
-                    rejected.isNotEmpty
-                        ? 'Full then'
-                        : 'Drop someone here (from ${hourLabel(hour)})',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: rejected.isNotEmpty ? AppTheme.red : muted,
-                    ),
-                  ),
-                ),
-              for (final s in here)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: _PersonCard(
-                    shift: s,
-                    ctx: ctx,
-                    compact: true,
-                    segments: segmentsOn(s, position.id),
-                    onRemove: () => onUnassign(s.id),
-                  ),
-                ),
-              if (rejected.isNotEmpty && here.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    'Full during part of that time',
-                    style: TextStyle(fontSize: 12, color: AppTheme.red),
-                  ),
-                ),
-            ],
+            ),
+          );
+        },
+      );
+    }
+
+    // When someone is dragged on there, that person fills up the entire tile!
+    // When someone is dragged on there, that person fills up the entire tile!
+    // The tile has a clean card background with a title color accent stripe on the left.
+    // There is a little tag next to the name that says what that tile or where that position is.
+    Widget buildCard(Shift s, {bool dragging = false}) {
+      final user = ctx.users[s.userId];
+      final color = colorForUser(user, ctx.settings);
+      final name = personName(user, short: true);
+      final posTag = position.name.isEmpty ? 'Pos' : position.name;
+
+      return Container(
+        height: 50,
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: theme.dividerColor.withValues(alpha: 0.8),
+            width: 1.0,
           ),
-        );
-      },
-    );
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: dragging ? 0.25 : 0.04),
+              blurRadius: dragging ? 10 : 3,
+              offset: Offset(0, dragging ? 4 : 1),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Left color bar showing title color neatly
+            Container(
+              width: 5,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: const BorderRadius.horizontal(
+                  left: Radius.circular(9),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Person Name (interactive: click pops up profile)
+            Expanded(
+              child: _HoverableTileName(
+                name: name,
+                onTap: () {
+                  if (user?.id != null) {
+                    showMemberProfileDialog(context, user!.id!);
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 6),
+            // Little tag next to the name saying what that tile or where that position is
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+              decoration: BoxDecoration(
+                color: theme.brightness == Brightness.dark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Text(
+                posTag,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: theme.textTheme.bodyMedium?.color,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+      );
+    }
+
+    Widget buildFilledTile(Shift s) {
+      final user = ctx.users[s.userId];
+      final posTag = position.name.isEmpty ? 'Pos' : position.name;
+      final tooltipMsg =
+          '${personName(user)} · ${formatRange(s.start, s.end)} · $posTag';
+
+      final cardContent = buildCard(s, dragging: false);
+      final tooltipWrapped = Tooltip(
+        message: tooltipMsg,
+        waitDuration: const Duration(milliseconds: 400),
+        child: cardContent,
+      );
+
+      return MouseRegion(
+        cursor: SystemMouseCursors.grab,
+        child: Draggable<_ShiftDrag>(
+          data: _ShiftDrag(s.id),
+          onDragEnd: (details) {
+            // Dragging the person out of the tile removes them
+            if (!details.wasAccepted) {
+              onUnassign(s.id);
+            }
+          },
+          feedback: Material(
+            color: Colors.transparent,
+            child: SizedBox(
+              width: 200,
+              height: 50,
+              child: buildCard(s, dragging: true),
+            ),
+          ),
+          childWhenDragging: Opacity(opacity: 0.35, child: tooltipWrapped),
+          child: tooltipWrapped,
+        ),
+      );
+    }
+
+    if (here.isNotEmpty) {
+      return buildFilledTile(here.first);
+    }
+
+    return const SizedBox.shrink();
   }
 }
 
@@ -1240,14 +1414,20 @@ class _PersonCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      personName(user),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: compact ? 13 : 14,
-                        fontWeight: FontWeight.bold,
-                        color: theme.textTheme.bodyLarge?.color,
+                    InkWell(
+                      onTap: user?.id != null
+                          ? () => context.go('/member/${user!.id}?from=/shift')
+                          : null,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Text(
+                        personName(user),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: compact ? 13 : 14,
+                          fontWeight: FontWeight.bold,
+                          color: theme.textTheme.bodyLarge?.color,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -1421,4 +1601,54 @@ class _Pill extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _HoverableTileName extends StatefulWidget {
+  final String name;
+  final VoidCallback onTap;
+
+  const _HoverableTileName({required this.name, required this.onTap});
+
+  @override
+  State<_HoverableTileName> createState() => _HoverableTileNameState();
+}
+
+class _HoverableTileNameState extends State<_HoverableTileName> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _hovered ? 1.03 : 1.0,
+          duration: const Duration(milliseconds: 140),
+          alignment: Alignment.centerLeft,
+          child: Text(
+            widget.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: _hovered
+                  ? theme.colorScheme.primary
+                  : theme.textTheme.bodyLarge?.color,
+              decoration: _hovered
+                  ? TextDecoration.underline
+                  : TextDecoration.none,
+              decorationColor: theme.colorScheme.primary.withValues(alpha: 0.6),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

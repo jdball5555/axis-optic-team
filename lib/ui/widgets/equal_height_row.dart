@@ -40,7 +40,8 @@ class _RenderEqualHeightRow extends RenderBox
 
   @override
   void setupParentData(RenderBox child) {
-    if (child.parentData is! _RowParentData) child.parentData = _RowParentData();
+    if (child.parentData is! _RowParentData)
+      child.parentData = _RowParentData();
   }
 
   @override
@@ -71,20 +72,32 @@ class _RenderEqualHeightRow extends RenderBox
       child = childAfter(child);
     }
     if (tallest.isInfinite) tallest = 0;
-    // Then all at the tallest height.
+
+    // Then all at least at the tallest height.
     var x = 0.0;
     child = firstChild;
+    var finalTallest = tallest;
     while (child != null) {
-      child.layout(BoxConstraints.tightFor(width: columnWidth, height: tallest));
+      child.layout(
+        BoxConstraints(
+          minWidth: columnWidth,
+          maxWidth: columnWidth,
+          minHeight: tallest,
+          maxHeight: constraints.maxHeight,
+        ),
+        parentUsesSize: true,
+      );
+      finalTallest = math.max(finalTallest, child.size.height);
       (child.parentData! as _RowParentData).offset = Offset(x, 0);
       x += columnWidth + _spacing;
       child = childAfter(child);
     }
-    size = constraints.constrain(Size(width, tallest));
+    size = constraints.constrain(Size(width, finalTallest));
   }
 
   @override
-  void paint(PaintingContext context, Offset offset) => defaultPaint(context, offset);
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
 
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>

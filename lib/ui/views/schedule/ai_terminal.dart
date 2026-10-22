@@ -51,6 +51,7 @@ class _AiTerminalPanelState extends State<AiTerminalPanel>
     widget.onSend?.call(text);
     _chat.clear();
   }
+
   late final AnimationController _blink;
 
   @override
@@ -92,29 +93,88 @@ class _AiTerminalPanelState extends State<AiTerminalPanel>
     final theme = Theme.of(context);
     final fg = theme.textTheme.bodyLarge?.color ?? Colors.white;
     final dim = theme.textTheme.bodySmall?.color ?? Colors.grey;
-    final mono = TextStyle(
-      fontFamily: 'monospace',
-      fontFamilyFallback: const ['Menlo', 'Consolas', 'Courier New'],
-      fontSize: 12.5,
-      height: 1.5,
-      color: fg,
-    );
 
-    (String, Color) style(AiLineKind kind) => switch (kind) {
-      AiLineKind.command => ('\$ ', AppTheme.accent),
-      AiLineKind.info => ('  ', dim),
-      AiLineKind.success => ('✓ ', AppTheme.accent2),
-      AiLineKind.warning => ('! ', AppTheme.accent),
-      AiLineKind.error => ('✗ ', AppTheme.red),
-      AiLineKind.ai => ('› ', fg),
-      AiLineKind.user => ('› ', fg),
-    };
+    Widget buildLine(AiLine l) {
+      if (l.kind == AiLineKind.user) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Container(
+            margin: const EdgeInsets.only(top: 4, bottom: 4, left: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
+            ),
+            child: Text(
+              l.text,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: fg,
+              ),
+            ),
+          ),
+        );
+      }
+
+      final (icon, iconColor) = switch (l.kind) {
+        AiLineKind.command => (Icons.play_arrow_rounded, AppTheme.accent),
+        AiLineKind.success => (
+          Icons.check_circle_outline_rounded,
+          AppTheme.green,
+        ),
+        AiLineKind.warning => (Icons.warning_amber_rounded, AppTheme.accent),
+        AiLineKind.error => (Icons.error_outline_rounded, AppTheme.red),
+        _ => (Icons.info_outline_rounded, dim),
+      };
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2.5),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Icon(icon, size: 14, color: iconColor),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                l.text,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.4,
+                  fontWeight: l.kind == AiLineKind.command
+                      ? FontWeight.w600
+                      : FontWeight.normal,
+                  color: switch (l.kind) {
+                    AiLineKind.error => AppTheme.red,
+                    AiLineKind.success => fg,
+                    AiLineKind.warning => fg,
+                    AiLineKind.info => dim,
+                    _ => fg,
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -126,14 +186,14 @@ class _AiTerminalPanelState extends State<AiTerminalPanel>
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(6),
+                  padding: const EdgeInsets.all(7),
                   decoration: BoxDecoration(
                     color: AppTheme.accent2.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
-                    Icons.auto_awesome,
-                    size: 16,
+                    Icons.auto_awesome_rounded,
+                    size: 18,
                     color: AppTheme.accent2,
                   ),
                 ),
@@ -143,7 +203,7 @@ class _AiTerminalPanelState extends State<AiTerminalPanel>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'AI scheduler',
+                        'AI Scheduler',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -171,7 +231,7 @@ class _AiTerminalPanelState extends State<AiTerminalPanel>
                           Flexible(
                             child: Text(
                               widget.busy
-                                  ? 'Working…'
+                                  ? 'Generating schedule…'
                                   : 'Gemini · ${AiScheduler.lastWorkingModel ?? kScheduleAiModels.first}',
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(fontSize: 11, color: dim),
@@ -183,7 +243,7 @@ class _AiTerminalPanelState extends State<AiTerminalPanel>
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Clear log',
+                  tooltip: 'Clear history',
                   visualDensity: VisualDensity.compact,
                   iconSize: 18,
                   onPressed: widget.busy ? null : widget.onClear,
@@ -199,66 +259,61 @@ class _AiTerminalPanelState extends State<AiTerminalPanel>
               ],
             ),
           ),
-          // Log.
+          // Activity list.
           Expanded(
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: theme.scaffoldBackgroundColor,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: theme.dividerColor),
+                border: Border.all(
+                  color: theme.dividerColor.withValues(alpha: 0.7),
+                ),
               ),
               child: SelectionArea(
                 child: ListView(
                   controller: _scroll,
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                   children: [
-                    for (final l in widget.lines)
+                    if (widget.lines.isEmpty && !widget.busy)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 3),
-                        child: Builder(
-                          builder: (_) {
-                            final (prefix, color) = style(l.kind);
-                            return Text.rich(
-                              TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: prefix,
-                                    style: TextStyle(
-                                      color: color,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  TextSpan(text: l.text),
-                                ],
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.auto_awesome_rounded,
+                                size: 28,
+                                color: dim.withValues(alpha: 0.4),
                               ),
-                              style: mono.copyWith(
-                                color: switch (l.kind) {
-                                  AiLineKind.info => dim,
-                                  AiLineKind.warning => fg,
-                                  AiLineKind.error => AppTheme.red,
-                                  _ => fg,
-                                },
-                                fontWeight: l.kind == AiLineKind.command
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
+                              const SizedBox(height: 8),
+                              Text(
+                                'Ready to generate shifts for this week',
+                                style: TextStyle(fontSize: 13, color: dim),
                               ),
-                            );
-                          },
+                            ],
+                          ),
                         ),
                       ),
+                    for (final l in widget.lines) buildLine(l),
                     if (widget.busy)
-                      Row(
-                        children: [
-                          Text('  working ', style: mono.copyWith(color: dim)),
-                          FadeTransition(
-                            opacity: _blink,
-                            child: Text(
-                              '▍',
-                              style: mono.copyWith(color: AppTheme.accent2),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          children: [
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 8),
+                            Text(
+                              'Optimizing assignments…',
+                              style: TextStyle(fontSize: 12, color: dim),
+                            ),
+                          ],
+                        ),
                       ),
                   ],
                 ),
@@ -275,7 +330,9 @@ class _AiTerminalPanelState extends State<AiTerminalPanel>
                   onPressed: widget.busy ? null : widget.onUndo,
                   icon: const Icon(Icons.undo, size: 16),
                   label: Text('Undo ${widget.undoLabel}'),
-                  style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
               ),
             ),
@@ -290,20 +347,35 @@ class _AiTerminalPanelState extends State<AiTerminalPanel>
                 maxLines: 3,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _send(),
-                style: mono,
+                style: TextStyle(fontSize: 13, color: fg),
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: 'Ask for a change, e.g. "No training for Lena on Wednesday"',
-                  hintStyle: mono.copyWith(color: dim),
-                  prefixText: '› ',
-                  prefixStyle: mono.copyWith(color: AppTheme.accent2, fontWeight: FontWeight.bold),
+                  hintText: 'Ask AI to change, e.g. "No training for Lena"',
+                  hintStyle: TextStyle(fontSize: 13, color: dim),
                   filled: true,
                   fillColor: theme.scaffoldBackgroundColor,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: theme.dividerColor),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(
+                      color: theme.dividerColor.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: AppTheme.accent),
+                  ),
                   suffixIcon: IconButton(
                     tooltip: 'Send',
                     onPressed: widget.busy ? null : _send,
-                    icon: Icon(Icons.send, size: 18, color: AppTheme.accent2),
+                    icon: Icon(Icons.send, size: 18, color: AppTheme.accent),
                   ),
                 ),
               ),
@@ -311,36 +383,49 @@ class _AiTerminalPanelState extends State<AiTerminalPanel>
           // Build.
           Padding(
             padding: const EdgeInsets.all(12),
-            child: FilledButton.icon(
-              onPressed: widget.busy ? null : widget.onBuild,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.accent,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-              icon: widget.busy
-                  ? const SizedBox(
+            child: widget.busy
+                ? FilledButton.icon(
+                    onPressed: null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.accent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    icon: const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: Colors.white,
                       ),
-                    )
-                  : const Icon(Icons.auto_awesome, size: 18),
-              label: Text(
-                widget.busy
-                    ? 'Building schedule…'
-                    : 'Build schedule for week of ${widget.weekLabel}',
-              ),
-            ),
+                    ),
+                    label: const Text('Building schedule…'),
+                  )
+                : FilledButton(
+                    onPressed: widget.onBuild,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.accent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    child: Text(
+                      'Build schedule for week of ${widget.weekLabel}',
+                    ),
+                  ),
           ),
         ],
       ),

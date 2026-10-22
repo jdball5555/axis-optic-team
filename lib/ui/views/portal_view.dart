@@ -95,12 +95,17 @@ Stream<List<PortalLink>> _streamLinksForStores(List<String> storeIds) {
 final portalLinksProvider = StreamProvider<List<PortalLink>>((ref) {
   final storeId = ref.watch(currentStoreIdProvider);
   if (storeId != null) return _streamLinksForStores([storeId]);
-  return FirebaseFirestore.instance
-      .collection('stores')
-      .snapshots()
-      .map((s) => s.docs.map((d) => d.id).toList())
-      .distinct((a, b) => a.join(',') == b.join(','))
-      .switchMap(_streamLinksForStores);
+
+  final storesAsync = ref.watch(allStoresStreamProvider);
+  final storeIds =
+      storesAsync.valueOrNull?.map((s) => s['id'] as String).toList();
+  if (storeIds != null) {
+    return _streamLinksForStores(storeIds);
+  }
+  return ref.watch(allStoresStreamProvider.stream).switchMap((stores) {
+    final ids = stores.map((s) => s['id'] as String).toList();
+    return _streamLinksForStores(ids);
+  });
 });
 
 /// Finds which stores actually contain a link with this id.
@@ -247,7 +252,9 @@ class PortalView extends ConsumerWidget {
               child: linksAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(
-                  child: Text('Could not load portal links: ${_friendlyError(e)}'),
+                  child: Text(
+                    'Could not load portal links: ${_friendlyError(e)}',
+                  ),
                 ),
                 data: (_) => links.isEmpty
                     ? const _PortalEmptyState()
@@ -412,11 +419,7 @@ class _PortalLinkCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      Icons.open_in_new,
-                      color: AppTheme.accent,
-                      size: 19,
-                    ),
+                    Icon(Icons.open_in_new, color: AppTheme.accent, size: 19),
                     const SizedBox(width: 9),
                     Expanded(
                       child: Text(
@@ -457,10 +460,7 @@ class _PortalLinkCard extends StatelessWidget {
                   link.url,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppTheme.accent,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: AppTheme.accent, fontSize: 12),
                 ),
                 if (showStoreTags) ...[
                   const SizedBox(height: 12),
@@ -793,7 +793,8 @@ class _PortalLinkDialogState extends State<_PortalLinkDialog> {
 
   /// Viewing a single store: the link always belongs to that store.
   Widget _buildFixedStore(ThemeData theme) {
-    final name = widget.stores
+    final name =
+        widget.stores
             .where((s) => s.id == widget.currentStoreId)
             .firstOrNull
             ?.name ??
@@ -918,7 +919,11 @@ class _PortalLinkDialogState extends State<_PortalLinkDialog> {
                   controller: _urlController,
                   keyboardType: TextInputType.url,
                   textInputAction: TextInputAction.next,
-                  decoration: field('Link', hint: 'https://…', icon: Icons.link),
+                  decoration: field(
+                    'Link',
+                    hint: 'https://…',
+                    icon: Icons.link,
+                  ),
                   validator: _validateUrl,
                 ),
                 const SizedBox(height: 16),

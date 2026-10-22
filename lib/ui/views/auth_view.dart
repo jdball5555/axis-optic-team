@@ -1,4 +1,7 @@
+import '../widgets/axis_loader.dart';
+import '../widgets/store_intro.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -48,6 +51,10 @@ class _AuthViewState extends ConsumerState<AuthView> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  /// Signing in with the saved login on launch: show the loading animation
+  /// instead of the form.
+  bool _autoSigningIn = false;
+
   bool _needsPasswordReset = false;
   String _resetUserId = '';
   final _newPasswordController = TextEditingController();
@@ -62,6 +69,7 @@ class _AuthViewState extends ConsumerState<AuthView> {
       _signupFirstController.text = widget.setupFirstName ?? '';
       _signupLastController.text = widget.setupLastName ?? '';
     } else {
+      _autoSigningIn = true;
       _checkRememberedUser();
     }
   }
@@ -78,7 +86,12 @@ class _AuthViewState extends ConsumerState<AuthView> {
           _rememberDevice = true;
         });
       }
-      _handleLogin();
+      await _handleLogin();
+      // Still here: it didn't work, so show the form (with the error).
+      if (mounted && _errorMessage != null)
+        setState(() => _autoSigningIn = false);
+    } else if (mounted) {
+      setState(() => _autoSigningIn = false);
     }
   }
 
@@ -118,28 +131,50 @@ class _AuthViewState extends ConsumerState<AuthView> {
       _errorMessage = null;
     });
 
+    // Start this account's store intro now (stores remembered from its last
+    // sign-in on this device) instead of after sign-in finishes.
+    final rememberedStores = await StoreIntros.rememberedFor(email);
+    if (mounted && rememberedStores != null && rememberedStores.isNotEmpty) {
+      ref.read(storeIntroRequestProvider.notifier).state = rememberedStores;
+    }
+
     try {
       final userCredential = await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: password);
       final uid = userCredential.user!.uid;
 
-      // Fetch user role from Firestore by uid
+      // Fetch user profile from Firestore by uid or email
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .get();
-      if (!doc.exists) {
-        if (mounted)
-          setState(() => _errorMessage = 'User profile not found in database');
-        return;
+
+      Map<String, dynamic> data;
+      String activeUid = uid;
+
+      if (doc.exists) {
+        data = doc.data()!;
+      } else {
+        final emailQuery = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', isEqualTo: email.trim().toLowerCase())
+            .get();
+        if (emailQuery.docs.isNotEmpty) {
+          data = emailQuery.docs.first.data();
+          activeUid = emailQuery.docs.first.id;
+        } else {
+          if (mounted) {
+            setState(
+              () => _errorMessage = 'User profile not found in database',
+            );
+          }
+          return;
+        }
       }
 
-      final data = doc.data()!;
-
-      // Temporarily bypass needs_password_reset since we're using Firebase Auth now
-      // (You can still implement custom forced-reset flows later if desired)
-
-      ref.read(currentUserProvider.notifier).state = {'id': uid, ...data};
+      ref.read(currentUserProvider.notifier).state = {'id': activeUid, ...data};
+      ref.read(storeIntroRequestProvider.notifier).state = null;
+      StoreIntros.rememberAccount(email, StoreIntros.storeIdsOf(data));
 
       // Auto select store to 'All Stores'
       ref.read(currentStoreIdProvider.notifier).state = null;
@@ -181,7 +216,11 @@ class _AuthViewState extends ConsumerState<AuthView> {
       if (mounted)
         setState(() => _errorMessage = _sanitizeError(e, 'Error: $e'));
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      // Didn't get in: drop the intro that started on Login.
+      if (mounted) {
+        ref.read(storeIntroRequestProvider.notifier).state = null;
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -404,6 +443,9 @@ class _AuthViewState extends ConsumerState<AuthView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_autoSigningIn && _errorMessage == null && !_needsPasswordReset) {
+      return const AxisLoadingScreen();
+    }
     if (_needsPasswordReset) {
       return Scaffold(
         body: Center(
@@ -420,6 +462,14 @@ class _AuthViewState extends ConsumerState<AuthView> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Image.asset(
+                      'assets/branding/app_icon_circle.png',
+                      width: 64,
+                      height: 64,
+                      filterQuality: FilterQuality.high,
+                      semanticLabel: 'Axis Team',
+                    ),
+                    const SizedBox(height: 16),
                     Text(
                       'Create Your Password',
                       style: TextStyle(
@@ -497,215 +547,256 @@ class _AuthViewState extends ConsumerState<AuthView> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Container(
-          constraints: const BoxConstraints(maxWidth: 400),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _isLogin ? 'Login' : 'Create Account',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).textTheme.titleLarge?.color,
-                ),
-              ),
-              const SizedBox(height: 24),
-              if (_isLogin) ...[
-                TextField(
-                  controller: _loginEmailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email Address',
-                    border: OutlineInputBorder(),
-                  ),
+            constraints: const BoxConstraints(maxWidth: 400),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 10),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  'assets/branding/app_icon_circle.png',
+                  width: 72,
+                  height: 72,
+                  filterQuality: FilterQuality.high,
+                  semanticLabel: 'Axis Team',
                 ),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: _loginPasswordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Password',
-                    border: OutlineInputBorder(),
-                  ),
-                  obscureText: true,
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Checkbox(
-                          value: _rememberDevice,
-                          onChanged: (val) {
-                            setState(() => _rememberDevice = val ?? false);
-                          },
-                          activeColor: AppTheme.redLight,
-                        ),
-                        const Text('Remember this device'),
-                      ],
-                    ),
-                    TextButton(
-                      onPressed: _isLoading ? null : _handleForgotPassword,
-                      child: const Text('Forgot Password?'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                if (_errorMessage != null) ...[
-                  Text(
-                    _errorMessage!,
-                    style: const TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleLogin,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.redLight,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('Login'),
+                Text(
+                  'Axis Team',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                    color: Theme.of(context).textTheme.titleLarge?.color,
                   ),
                 ),
-              ] else ...[
-                TextField(
-                  controller: _signupFirstController,
-                  readOnly:
-                      widget.setupFirstName != null &&
-                      widget.setupFirstName!.isNotEmpty,
-                  decoration: InputDecoration(
-                    labelText: 'First Name',
-                    border: const OutlineInputBorder(),
-                    filled:
-                        widget.setupFirstName != null &&
-                        widget.setupFirstName!.isNotEmpty,
-                    fillColor: Theme.of(
-                      context,
-                    ).dividerColor.withValues(alpha: 0.05),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _signupLastController,
-                  readOnly:
-                      widget.setupLastName != null &&
-                      widget.setupLastName!.isNotEmpty,
-                  decoration: InputDecoration(
-                    labelText: 'Last Name',
-                    border: const OutlineInputBorder(),
-                    filled:
-                        widget.setupLastName != null &&
-                        widget.setupLastName!.isNotEmpty,
-                    fillColor: Theme.of(
-                      context,
-                    ).dividerColor.withValues(alpha: 0.05),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _signupEmailController,
-                  readOnly:
-                      widget.setupEmail != null &&
-                      widget.setupEmail!.isNotEmpty,
-                  decoration: InputDecoration(
-                    labelText: 'Email Address',
-                    border: const OutlineInputBorder(),
-                    filled:
-                        widget.setupEmail != null &&
-                        widget.setupEmail!.isNotEmpty,
-                    fillColor: Theme.of(
-                      context,
-                    ).dividerColor.withValues(alpha: 0.05),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _signupPasswordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Password',
-                    border: OutlineInputBorder(),
-                  ),
-                  obscureText: true,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _signupConfirmPasswordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirm Password',
-                    border: OutlineInputBorder(),
-                  ),
-                  obscureText: true,
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: _showStoreSelector,
-                    child: Text(
-                      'Add user to stores (${_selectedStores.length} selected)',
-                    ),
+                const SizedBox(height: 6),
+                Text(
+                  _isLogin ? 'Login to continue' : 'Create an account',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Theme.of(context).textTheme.bodySmall?.color,
                   ),
                 ),
                 const SizedBox(height: 24),
-                if (_errorMessage != null) ...[
-                  Text(
-                    _errorMessage!,
-                    style: const TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold,
+                if (_isLogin) ...[
+                  TextField(
+                    controller: _loginEmailController,
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
+                      border: OutlineInputBorder(),
                     ),
-                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
-                ],
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleSignup,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.redLight,
-                      foregroundColor: Colors.white,
+                  TextField(
+                    controller: _loginPasswordController,
+                    decoration: const InputDecoration(
+                      labelText: 'Password',
+                      border: OutlineInputBorder(),
                     ),
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('Create Account'),
+                    obscureText: true,
                   ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Checkbox(
+                            value: _rememberDevice,
+                            onChanged: (val) {
+                              setState(() => _rememberDevice = val ?? false);
+                            },
+                            activeColor: AppTheme.redLight,
+                          ),
+                          const Text('Remember this device'),
+                        ],
+                      ),
+                      TextButton(
+                        onPressed: _isLoading ? null : _handleForgotPassword,
+                        child: const Text('Forgot Password?'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (_errorMessage != null) ...[
+                    Text(
+                      _errorMessage!,
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleLogin,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.redLight,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text('Login'),
+                    ),
+                  ),
+                ] else ...[
+                  TextField(
+                    controller: _signupFirstController,
+                    readOnly:
+                        widget.setupFirstName != null &&
+                        widget.setupFirstName!.isNotEmpty,
+                    decoration: InputDecoration(
+                      labelText: 'First Name',
+                      border: const OutlineInputBorder(),
+                      filled:
+                          widget.setupFirstName != null &&
+                          widget.setupFirstName!.isNotEmpty,
+                      fillColor: Theme.of(
+                        context,
+                      ).dividerColor.withValues(alpha: 0.05),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _signupLastController,
+                    readOnly:
+                        widget.setupLastName != null &&
+                        widget.setupLastName!.isNotEmpty,
+                    decoration: InputDecoration(
+                      labelText: 'Last Name',
+                      border: const OutlineInputBorder(),
+                      filled:
+                          widget.setupLastName != null &&
+                          widget.setupLastName!.isNotEmpty,
+                      fillColor: Theme.of(
+                        context,
+                      ).dividerColor.withValues(alpha: 0.05),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _signupEmailController,
+                    readOnly:
+                        widget.setupEmail != null &&
+                        widget.setupEmail!.isNotEmpty,
+                    decoration: InputDecoration(
+                      labelText: 'Email Address',
+                      border: const OutlineInputBorder(),
+                      filled:
+                          widget.setupEmail != null &&
+                          widget.setupEmail!.isNotEmpty,
+                      fillColor: Theme.of(
+                        context,
+                      ).dividerColor.withValues(alpha: 0.05),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _signupPasswordController,
+                    decoration: const InputDecoration(
+                      labelText: 'Password',
+                      border: OutlineInputBorder(),
+                    ),
+                    obscureText: true,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _signupConfirmPasswordController,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm Password',
+                      border: OutlineInputBorder(),
+                    ),
+                    obscureText: true,
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: _showStoreSelector,
+                      child: Text(
+                        'Add user to stores (${_selectedStores.length} selected)',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  if (_errorMessage != null) ...[
+                    Text(
+                      _errorMessage!,
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleSignup,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.redLight,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text('Create Account'),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                // Accounts come from an invite; there's no sign-up here.
+                if (_isLogin)
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'Interested in Axis Optic: Team? Contact ',
+                        style: TextStyle(
+                          color: Theme.of(context).textTheme.bodySmall?.color,
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () =>
+                            launchUrl(Uri.parse('mailto:contact@axisoptic.com')),
+                        child: Text(
+                          'contact@axisoptic.com',
+                          style: TextStyle(
+                            color: AppTheme.teal,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  TextButton(
+                    onPressed: () => setState(() => _isLogin = true),
+                    child: const Text('Already have an account? Login'),
+                  ),
+                const SizedBox(height: 8),
+                const Text(
+                  'v$appVersion',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
                 ),
               ],
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () => setState(() => _isLogin = !_isLogin),
-                child: Text(
-                  _isLogin
-                      ? 'Need an account? Create one'
-                      : 'Already have an account? Login',
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'v$appVersion',
-                style: TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-            ],
+            ),
           ),
-        ),
         ),
       ),
     );

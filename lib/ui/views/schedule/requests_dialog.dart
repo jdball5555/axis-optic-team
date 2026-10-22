@@ -13,14 +13,19 @@ Future<List<String>?> showRequestsDialog(
   ValueChanged<String>? onForget,
 }) => showDialog<List<String>>(
   context: context,
-  builder: (_) => _RequestsDialog(previous: previous, past: past, onForget: onForget),
+  builder: (_) =>
+      _RequestsDialog(previous: previous, past: past, onForget: onForget),
 );
 
 class _RequestsDialog extends StatefulWidget {
   final List<String> previous;
   final List<String> past;
   final ValueChanged<String>? onForget;
-  const _RequestsDialog({required this.previous, required this.past, this.onForget});
+  const _RequestsDialog({
+    required this.previous,
+    required this.past,
+    this.onForget,
+  });
 
   @override
   State<_RequestsDialog> createState() => _RequestsDialogState();
@@ -41,8 +46,9 @@ class _RequestsDialogState extends State<_RequestsDialog> {
     super.dispose();
   }
 
-  bool _inBoxes(String text) =>
-      _boxes.any((c) => c.text.trim().toLowerCase() == text.trim().toLowerCase());
+  bool _inBoxes(String text) => _boxes.any(
+    (c) => c.text.trim().toLowerCase() == text.trim().toLowerCase(),
+  );
 
   /// Puts a past request in the first empty box (or a new one).
   void _use(String text) => setState(() {
@@ -82,7 +88,9 @@ class _RequestsDialogState extends State<_RequestsDialog> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppTheme.tint(AppTheme.accent2).withValues(alpha: 0.35),
+                  color: AppTheme.tint(
+                    AppTheme.accent2,
+                  ).withValues(alpha: 0.35),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Column(
@@ -90,7 +98,11 @@ class _RequestsDialogState extends State<_RequestsDialog> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.assignment_outlined, size: 16, color: AppTheme.accent2),
+                        Icon(
+                          Icons.assignment_outlined,
+                          size: 16,
+                          color: AppTheme.accent2,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'Does anyone need admin time?',
@@ -163,7 +175,8 @@ class _RequestsDialogState extends State<_RequestsDialog> {
                         tooltip: 'Remove',
                         onPressed: () => setState(() {
                           _boxes.removeAt(i).dispose();
-                          if (_boxes.isEmpty) _boxes.add(TextEditingController());
+                          if (_boxes.isEmpty)
+                            _boxes.add(TextEditingController());
                         }),
                         icon: const Icon(Icons.close, size: 18),
                       ),
@@ -173,7 +186,8 @@ class _RequestsDialogState extends State<_RequestsDialog> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
-                  onPressed: () => setState(() => _boxes.add(TextEditingController())),
+                  onPressed: () =>
+                      setState(() => _boxes.add(TextEditingController())),
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('Add another request'),
                 ),
@@ -221,7 +235,10 @@ class _RequestsDialogState extends State<_RequestsDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         FilledButton(
           onPressed: () => Navigator.pop(context, _result()),
           child: const Text('Build'),

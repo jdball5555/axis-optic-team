@@ -22,9 +22,12 @@ import '../../ui/views/team_member_dashboard_view.dart';
 import '../../ui/mobile/home_page.dart';
 import '../../ui/mobile/mobile_data.dart';
 import '../../ui/mobile/mobile_shell.dart';
+import '../../ui/mobile/mobile_ui.dart';
 import '../../ui/mobile/my_schedule_page.dart';
+import '../../ui/mobile/promotion_page.dart';
 import '../../ui/mobile/roster_page.dart';
 import '../../ui/mobile/settings_page.dart';
+import '../../ui/mobile/shift_board_mobile.dart';
 import '../../ui/mobile/team_page.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -45,7 +48,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       if (!isAuth) return null;
 
       // Phones (and every team-member login) get the phone app under /m.
-      final mobile = useMobileLayout(currentUser);
+      final mobile = useMobileLayout(
+        currentUser,
+        teamMemberView: ref.read(teamMemberViewProvider),
+      );
       final isMobileRoute = location == '/m' || location.startsWith('/m/');
       if (isGoingToAuth || location == '/team_member_dashboard') {
         return mobile ? MobileTab.home.path : '/dashboard';
@@ -74,12 +80,26 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/team_member_dashboard',
         builder: (context, state) => const TeamMemberDashboardView(),
       ),
+      // Phone app: the congratulations screen after a promotion (full screen,
+      // over the tabs).
+      GoRoute(
+        path: celebratePath,
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          transitionDuration: const Duration(milliseconds: 450),
+          child: const PromotionCelebrationPage(),
+          transitionsBuilder: (context, animation, _, child) => FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: child,
+          ),
+        ),
+      ),
       // ---------------------------------------------------------------------
       // Phone app: bottom tabs (branch order = MobileTab order).
       // ---------------------------------------------------------------------
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
-            MobileShell(navigationShell: navigationShell),
+            MobileTheme(child: MobileShell(navigationShell: navigationShell)),
         branches: [
           StatefulShellBranch(
             routes: [
@@ -117,6 +137,16 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/m/roster',
                 builder: (context, state) => const RosterMobilePage(),
+                routes: [
+                  GoRoute(
+                    path: 'shift',
+                    builder: (context, state) => ShiftBoardPage(
+                      initialDate: DateTime.tryParse(
+                        state.uri.queryParameters['date'] ?? '',
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -145,7 +175,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     path: 'member/:id',
                     builder: (context, state) {
                       final id = state.pathParameters['id']!;
-                      return MemberDetailView(userId: id);
+                      final from = state.uri.queryParameters['from'];
+                      return MemberDetailView(userId: id, returnPath: from);
                     },
                   ),
                 ],
@@ -172,6 +203,13 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/rosters',
                 builder: (context, state) => const RostersView(),
+                routes: [
+                  GoRoute(
+                    path: 'config',
+                    builder: (context, state) =>
+                        const RostersView(isConfigMode: true),
+                  ),
+                ],
               ),
             ],
           ),

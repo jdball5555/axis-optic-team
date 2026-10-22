@@ -16,5 +16,6 @@ abstract class ReviewIntervalModel with _$ReviewIntervalModel {
     String? notes,
   }) = _ReviewIntervalModel;
 
-  factory ReviewIntervalModel.fromJson(Map<String, dynamic> json) => _$ReviewIntervalModelFromJson(json);
+  factory ReviewIntervalModel.fromJson(Map<String, dynamic> json) =>
+      _$ReviewIntervalModelFromJson(json);
 }

@@ -4,10 +4,12 @@ class AppTheme {
   // Main Colors
   static const Color sideBar = Color(0xFF1F1F1F);
   static const Color border = Color(0xFF333333); // Lightened from 0xFF262626
-  static const Color mainBackground = Color(0xFF141414); // Darkened from 0xFF181818
+  static const Color mainBackground = Color(
+    0xFF141414,
+  ); // Darkened from 0xFF181818
   static const Color gray = Color(0xFFC9C9C9);
   static const Color primaryText = Color(0xFFD7D7D7);
-  
+
   // ---------------------------------------------------------------------------
   // Palette: every color has a dark-mode and a light-mode shade.
   // ---------------------------------------------------------------------------
@@ -154,7 +156,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(4),
         ),
         labelStyle: const TextStyle(color: gray, fontSize: 12),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
       ),
       chipTheme: ChipThemeData(
         selectedColor: secondary.withValues(alpha: 0.3),
@@ -227,7 +232,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(4),
         ),
         labelStyle: const TextStyle(color: lightGray, fontSize: 12),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
       ),
       chipTheme: ChipThemeData(
         selectedColor: secondary.withValues(alpha: 0.3),

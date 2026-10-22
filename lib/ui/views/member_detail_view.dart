@@ -5,19 +5,19 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/app_providers.dart';
-import '../../providers/feature_providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_model.dart';
 import '../widgets/multi_select_field.dart';
 import '../../models/store_settings_model.dart';
+import '../../models/title_journey.dart';
 
 class MemberDetailView extends ConsumerStatefulWidget {
   final String userId;
-  const MemberDetailView({super.key, required this.userId});
+  final String? returnPath;
+  const MemberDetailView({super.key, required this.userId, this.returnPath});
 
   @override
   ConsumerState<MemberDetailView> createState() => _MemberDetailViewState();
@@ -50,6 +50,93 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
   bool _showEndDate = false;
   List<Map<String, dynamic>> _historyLogs = [];
 
+  final Map<String, ProviderSubscription<AsyncValue<UserModel?>>>
+      _preloadUserSubs = {};
+  final Map<String, ProviderSubscription<AsyncValue<List<Map<String, dynamic>>>>>
+      _preloadTimeOffSubs = {};
+  final Map<String, ProviderSubscription<AsyncValue<Map<String, dynamic>?>>>
+      _preloadAvailabilitySubs = {};
+
+  @override
+  void didUpdateWidget(MemberDetailView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.userId != oldWidget.userId) {
+      _initialUser = null;
+      final sortedUsers = ref.read(sortedUsersProvider).valueOrNull ?? [];
+      final immediateUser =
+          sortedUsers.where((u) => u.id == widget.userId).firstOrNull;
+      if (immediateUser != null) {
+        _initControllers(immediateUser, force: true);
+      }
+    }
+  }
+
+  void _clearPreloadWindow() {
+    if (_preloadUserSubs.isNotEmpty) {
+      for (final sub in _preloadUserSubs.values) {
+        sub.close();
+      }
+      for (final sub in _preloadTimeOffSubs.values) {
+        sub.close();
+      }
+      for (final sub in _preloadAvailabilitySubs.values) {
+        sub.close();
+      }
+      _preloadUserSubs.clear();
+      _preloadTimeOffSubs.clear();
+      _preloadAvailabilitySubs.clear();
+    }
+  }
+
+  void _updatePreloadWindow(List<UserModel> sortedUsers, int currentIndex) {
+    if (currentIndex == -1 || sortedUsers.isEmpty) return;
+    final start = (currentIndex - 2).clamp(0, sortedUsers.length - 1);
+    final end = (currentIndex + 2).clamp(0, sortedUsers.length - 1);
+
+    final targetIds = <String>{};
+    for (int i = start; i <= end; i++) {
+      final uid = sortedUsers[i].id;
+      if (uid != null && uid.isNotEmpty) {
+        targetIds.add(uid);
+      }
+    }
+
+    // 1. Unload profiles moved more than 2 away
+    final toRemove = _preloadUserSubs.keys
+        .where((id) => !targetIds.contains(id))
+        .toList();
+    for (final id in toRemove) {
+      _preloadUserSubs[id]?.close();
+      _preloadUserSubs.remove(id);
+      _preloadTimeOffSubs[id]?.close();
+      _preloadTimeOffSubs.remove(id);
+      _preloadAvailabilitySubs[id]?.close();
+      _preloadAvailabilitySubs.remove(id);
+    }
+
+    // 2. Preload profiles within 2 away
+    for (final id in targetIds) {
+      if (!_preloadUserSubs.containsKey(id)) {
+        _preloadUserSubs[id] = ref.listenManual(
+          userStreamProvider(id),
+          (previous, next) {},
+        );
+      }
+      if (!_preloadTimeOffSubs.containsKey(id)) {
+        _preloadTimeOffSubs[id] = ref.listenManual(
+          userTimeOffRequestsProvider(id),
+          (previous, next) {},
+        );
+      }
+      if (!_preloadAvailabilitySubs.containsKey(id)) {
+        _preloadAvailabilitySubs[id] = ref.listenManual(
+          userAvailabilityProvider(id),
+          (previous, next) {},
+        );
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -72,8 +159,8 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
     _managerPermitController = TextEditingController();
   }
 
-  void _initControllers(UserModel user) {
-    if (_initialUser != null) return;
+  void _initControllers(UserModel user, {bool force = false}) {
+    if (_initialUser != null && !force && _initialUser!.id == user.id) return;
     _initialUser = user;
 
     _showPreferredName =
@@ -124,6 +211,7 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
     _hiringNotesController.dispose();
     _endDateController.dispose();
     _managerPermitController.dispose();
+    _clearPreloadWindow();
     super.dispose();
   }
 
@@ -504,17 +592,14 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
-                                color: Theme.of(
-                                  context,
-                                ).textTheme.bodySmall?.color,
+                                color: Theme.of(context).textTheme.bodySmall?.color,
                               ),
                             ),
                             const SizedBox(height: 4),
                             DropdownButtonFormField<String>(
-                              initialValue: _storeController.text,
-                              onChanged: (val) {
-                                if (val != null) _storeController.text = val;
-                              },
+                              value: stores.any((s) => s['id'] == _storeController.text)
+                                  ? _storeController.text
+                                  : (stores.isNotEmpty ? stores.first['id'] as String : null),
                               items: stores.map((s) {
                                 return DropdownMenuItem(
                                   value: s['id'] as String,
@@ -523,12 +608,17 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                                   ),
                                 );
                               }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setState(() {
+                                    _storeController.text = val;
+                                  });
+                                }
+                              },
                               decoration: const InputDecoration(),
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Theme.of(
-                                  context,
-                                ).textTheme.bodyLarge?.color,
+                                color: Theme.of(context).textTheme.bodyLarge?.color,
                               ),
                               dropdownColor: Theme.of(context).cardColor,
                             ),
@@ -562,34 +652,19 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ADDITIONAL TAGS',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).textTheme.bodySmall?.color,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  MultiSelectField(
-                    style: TextStyle(
-                      color: Theme.of(context).textTheme.bodyLarge?.color,
-                      fontSize: 14,
-                    ),
-                    options: settings.tags.map((e) => e.name).toList(),
-                    selected: _additionalTagsController.text
-                        .split(',')
-                        .map((e) => e.trim())
-                        .where((e) => e.isNotEmpty)
-                        .toList(),
-                    onChanged: (tags) => setState(
-                      () => _additionalTagsController.text = tags.join(', '),
-                    ),
-                  ),
-                ],
+              child: AppMultiSelectDropdown<String>(
+                label: 'ADDITIONAL TAGS',
+                options: settings.tags.map((e) => e.name).toList(),
+                selected: _additionalTagsController.text
+                    .split(',')
+                    .map((e) => e.trim())
+                    .where((e) => e.isNotEmpty)
+                    .toList(),
+                allLabel: 'All Tags',
+                emptyText: 'None',
+                onChanged: (tags) => setState(
+                  () => _additionalTagsController.text = tags.join(', '),
+                ),
               ),
             ),
           ],
@@ -768,6 +843,9 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
 
   @override
   Widget build(BuildContext context) {
+    final allowMemberNavigation = widget.returnPath == '/' &&
+        !(ModalRoute.of(context) is PopupRoute);
+
     final userAsyncValue = ref.watch(userStreamProvider(widget.userId));
     final sortedUsersAsync = ref.watch(sortedUsersProvider);
 
@@ -776,15 +854,8 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
     UserModel? prevUser;
     UserModel? nextUser;
 
-    final storeId =
-        userAsyncValue.valueOrNull?.store ??
-        ref.watch(currentStoreIdProvider) ??
-        '121';
-    final settings =
-        ref.watch(specificStoreSettingsProvider(storeId)).valueOrNull ??
-        const StoreSettingsModel();
-
-    sortedUsersAsync.whenData((sortedUsers) {
+    final sortedUsers = sortedUsersAsync.valueOrNull ?? [];
+    if (sortedUsers.isNotEmpty) {
       totalUsers = sortedUsers.length;
       currentIndex = sortedUsers.indexWhere((u) => u.id == widget.userId);
 
@@ -794,44 +865,125 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
       if (currentIndex != -1 && currentIndex < totalUsers - 1) {
         nextUser = sortedUsers[currentIndex + 1];
       }
-    });
+    }
+
+    if (allowMemberNavigation) {
+      _updatePreloadWindow(sortedUsers, currentIndex);
+    } else {
+      _clearPreloadWindow();
+    }
+
+    final fallbackUser =
+        sortedUsers.where((u) => u.id == widget.userId).firstOrNull;
+    final activeUser =
+        userAsyncValue.valueOrNull ?? fallbackUser ?? _initialUser;
+
+    if (activeUser != null) {
+      _initControllers(activeUser);
+    }
+
+    final storeId =
+        activeUser?.store ??
+        ref.watch(currentStoreIdProvider) ??
+        'QYfhsc0dBHLBbgOflHsA';
+    final settings =
+        ref.watch(specificStoreSettingsProvider(storeId)).valueOrNull ??
+        const StoreSettingsModel();
+    final isScheduleEnabled = settings.isScheduleEnabled;
+    final isShiftBoardEnabled = settings.isShiftBoardEnabled;
+    final isTeamMemberAccountsEnabled =
+        isScheduleEnabled || isShiftBoardEnabled;
+
+    if (activeUser == null && userAsyncValue.isLoading) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Center(
+          child: CircularProgressIndicator(
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+      );
+    }
+    if (activeUser == null && userAsyncValue.hasError) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Center(
+          child: Text(
+            'Error: ${userAsyncValue.error}',
+            style: TextStyle(color: AppTheme.primaryRed),
+          ),
+        ),
+      );
+    }
+    if (activeUser == null) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Center(
+          child: Text(
+            'User not found.',
+            style: TextStyle(
+              color: Theme.of(context).textTheme.bodyLarge?.color,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final user = activeUser;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: userAsyncValue.when(
-        data: (user) {
-          if (user == null)
-            return Center(
-              child: Text(
-                'User not found.',
-                style: TextStyle(
-                  color: Theme.of(context).textTheme.bodyLarge?.color,
-                ),
-              ),
-            );
-          _initControllers(user);
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 24.0,
-              vertical: 16.0,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 24.0,
+          vertical: 16.0,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top Action Bar
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 12,
               children: [
-                // Top Action Bar
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    TextButton.icon(
-                      onPressed: () => context.go('/'),
-                      icon: const Icon(Icons.arrow_back, size: 16),
-                      label: const Text('Back to Team Members Roster'),
+                TextButton.icon(
+                  onPressed: () {
+                    if (ModalRoute.of(context) is PopupRoute) {
+                      Navigator.of(context).pop();
+                    } else if (widget.returnPath != null &&
+                        widget.returnPath!.isNotEmpty) {
+                      context.go(widget.returnPath!);
+                    } else {
+                      context.go('/');
+                    }
+                  },
+                      icon: Icon(
+                        ModalRoute.of(context) is PopupRoute
+                            ? Icons.close
+                            : Icons.arrow_back,
+                        size: 16,
+                      ),
+                      label: Text(
+                        ModalRoute.of(context) is PopupRoute
+                            ? 'Close'
+                            : widget.returnPath == '/rosters'
+                            ? 'Back to Rosters'
+                            : widget.returnPath == '/schedule'
+                            ? 'Back to Schedule'
+                            : widget.returnPath == '/shift'
+                            ? 'Back to Shift'
+                            : 'Back to Team Members Roster',
+                      ),
                       style: TextButton.styleFrom(
                         foregroundColor: Theme.of(context).colorScheme.primary,
                       ),
                     ),
-                    Row(
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         ElevatedButton.icon(
                           onPressed: () =>
@@ -845,12 +997,12 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                             foregroundColor: Colors.white,
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
+                        if (allowMemberNavigation)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
                           decoration: BoxDecoration(
                             border: Border.all(
                               color: Theme.of(context).dividerColor,
@@ -858,6 +1010,7 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
                                 padding: EdgeInsets.zero,
@@ -872,8 +1025,15 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                                       : Theme.of(context).dividerColor,
                                 ),
                                 onPressed: prevUser != null
-                                    ? () =>
-                                          context.go('/member/${prevUser!.id}')
+                                    ? () {
+                                        final fromParam =
+                                            widget.returnPath != null
+                                            ? '?from=${Uri.encodeComponent(widget.returnPath!)}'
+                                            : '';
+                                        context.go(
+                                          '/member/${prevUser!.id}$fromParam',
+                                        );
+                                      }
                                     : null,
                               ),
                               const SizedBox(width: 12),
@@ -899,14 +1059,20 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                                       : Theme.of(context).dividerColor,
                                 ),
                                 onPressed: nextUser != null
-                                    ? () =>
-                                          context.go('/member/${nextUser!.id}')
+                                    ? () {
+                                        final fromParam =
+                                            widget.returnPath != null
+                                            ? '?from=${Uri.encodeComponent(widget.returnPath!)}'
+                                            : '';
+                                        context.go(
+                                          '/member/${nextUser!.id}$fromParam',
+                                        );
+                                      }
                                     : null,
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 16),
                         ElevatedButton.icon(
                           onPressed: _deleteProfile,
                           icon: const Icon(Icons.delete, size: 16),
@@ -963,10 +1129,9 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                               settings.tags
                                   .where((t) => t.name == user.title)
                                   .firstOrNull;
-                          if (tConf?.color != null) {
-                            titleColor = AppTheme.getColorFromName(
-                              tConf!.color!,
-                            );
+                          final tColor = tConf?.color;
+                          if (tColor != null) {
+                            titleColor = AppTheme.getColorFromName(tColor);
                           }
                         }
                         return _buildPill(
@@ -982,7 +1147,7 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                       _buildPill(user.designation!, AppTheme.lightBlue),
                     Builder(
                       builder: (context) {
-                        final storeId = user.store ?? '121';
+                        final storeId = user.store ?? 'QYfhsc0dBHLBbgOflHsA';
                         final storeData = ref
                             .watch(storeStreamProvider(storeId))
                             .valueOrNull;
@@ -991,22 +1156,20 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                         return _buildPill(name, AppTheme.lightBlue);
                       },
                     ),
-                    _buildPill(
-                      memberStatus(user),
-                      switch (memberStatus(user)) {
-                        'Active' => AppTheme.green,
-                        'Leaving' => AppTheme.primaryRed,
-                        _ => Colors.grey,
-                      },
-                    ),
+                    _buildPill(memberStatus(user), switch (memberStatus(user)) {
+                      'Active' => AppTheme.green,
+                      'Leaving' => AppTheme.primaryRed,
+                      _ => Colors.grey,
+                    }),
                     if (user.additionalTags != null)
                       ...user.additionalTags!.map((tag) {
                         Color tagColor = AppTheme.lightBlue;
                         final tagConf = settings.tags
                             .where((t) => t.name == tag)
                             .firstOrNull;
-                        if (tagConf != null && tagConf.color != null) {
-                          tagColor = AppTheme.getColorFromName(tagConf.color!);
+                        final tagColorName = tagConf?.color;
+                        if (tagColorName != null) {
+                          tagColor = AppTheme.getColorFromName(tagColorName);
                         }
                         return _buildPill(tag, tagColor);
                       }),
@@ -1023,7 +1186,7 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
 
                 Builder(
                   builder: (context) {
-                    final storeId = user.store ?? '121';
+                    final storeId = user.store ?? 'QYfhsc0dBHLBbgOflHsA';
                     final storeSettings =
                         ref
                             .watch(specificStoreSettingsProvider(storeId))
@@ -1126,551 +1289,143 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                     ),
                   ),
                 ),
-                if (ref.watch(scheduleFeatureProvider)) ...[
-                  const SizedBox(height: 16),
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Schedule Card
-                        Expanded(
-                          child: Card(
-                            color: Theme.of(context).cardColor,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              side: BorderSide(
-                                color: Theme.of(context).dividerColor,
-                              ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(24.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.calendar_month,
-                                        color: Theme.of(
-                                          context,
-                                        ).textTheme.titleLarge?.color,
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Availability',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Theme.of(
-                                            context,
-                                          ).textTheme.titleLarge?.color,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  if (!(_initialUser?.email != null &&
-                                      _initialUser!.email!.isNotEmpty))
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 16.0,
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          'Must have an account created.',
-                                          style: TextStyle(
-                                            color: Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall?.color,
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                  else
-                                    ref
-                                        .watch(
-                                          userAvailabilityProvider(
-                                            widget.userId,
-                                          ),
-                                        )
-                                        .when(
-                                          data: (availability) {
-                                            if (availability == null ||
-                                                availability.isEmpty) {
-                                              return Padding(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      vertical: 16.0,
-                                                    ),
-                                                child: Center(
-                                                  child: Text(
-                                                    'No availability set.',
-                                                    style: TextStyle(
-                                                      color: Theme.of(context)
-                                                          .textTheme
-                                                          .bodySmall
-                                                          ?.color,
-                                                    ),
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                            final days = [
-                                              'monday',
-                                              'tuesday',
-                                              'wednesday',
-                                              'thursday',
-                                              'friday',
-                                              'saturday',
-                                              'sunday',
-                                            ];
-
-                                            String formatTime(String time24) {
-                                              try {
-                                                final parts = time24.split(':');
-                                                int h = int.parse(parts[0]);
-                                                final m = parts[1];
-                                                final suffix = h >= 12
-                                                    ? 'PM'
-                                                    : 'AM';
-                                                if (h == 0)
-                                                  h = 12;
-                                                else if (h > 12)
-                                                  h -= 12;
-                                                return '$h:$m $suffix';
-                                              } catch (_) {
-                                                return time24;
-                                              }
-                                            }
-
-                                            return Column(
-                                              children: days.map((day) {
-                                                final slots =
-                                                    availability[day]
-                                                        as List<dynamic>? ??
-                                                    [];
-
-                                                final dayName =
-                                                    day
-                                                        .substring(0, 1)
-                                                        .toUpperCase() +
-                                                    day.substring(1);
-
-                                                String availabilityText =
-                                                    'Unavailable';
-                                                if (slots.isNotEmpty) {
-                                                  availabilityText = slots
-                                                      .map(
-                                                        (s) =>
-                                                            '${formatTime(s['start'])} - ${formatTime(s['end'])}',
-                                                      )
-                                                      .join(', ');
-                                                }
-
-                                                return Padding(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        vertical: 4.0,
-                                                      ),
-                                                  child: Row(
-                                                    children: [
-                                                      SizedBox(
-                                                        width: 100,
-                                                        child: Text(
-                                                          dayName,
-                                                          style: TextStyle(
-                                                            color:
-                                                                Theme.of(
-                                                                      context,
-                                                                    )
-                                                                    .textTheme
-                                                                    .bodyLarge
-                                                                    ?.color,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            fontSize: 14,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      Expanded(
-                                                        child: Text(
-                                                          availabilityText,
-                                                          style: TextStyle(
-                                                            color:
-                                                                Theme.of(
-                                                                      context,
-                                                                    )
-                                                                    .textTheme
-                                                                    .bodySmall
-                                                                    ?.color,
-                                                            fontSize: 14,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                );
-                                              }).toList(),
-                                            );
-                                          },
-                                          loading: () => const Center(
-                                            child: CircularProgressIndicator(),
-                                          ),
-                                          error: (e, st) => Center(
-                                            child: Text(
-                                              'Error loading availability',
-                                              style: TextStyle(
-                                                color: AppTheme.primaryRed,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        // Time Off Requests Card
-                        Expanded(
-                          child: Card(
-                            color: Theme.of(context).cardColor,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              side: BorderSide(
-                                color: Theme.of(context).dividerColor,
-                              ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(24.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.flight_takeoff,
-                                        color: Theme.of(
-                                          context,
-                                        ).textTheme.titleLarge?.color,
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Time Off Requests',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Theme.of(
-                                            context,
-                                          ).textTheme.titleLarge?.color,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  if (!(_initialUser?.email != null &&
-                                      _initialUser!.email!.isNotEmpty))
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 16.0,
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          'Must have an account created.',
-                                          style: TextStyle(
-                                            color: Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall?.color,
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                  else
-                                    ref
-                                        .watch(
-                                          userTimeOffRequestsProvider(
-                                            widget.userId,
-                                          ),
-                                        )
-                                        .when(
-                                          data: (requests) {
-                                            if (requests.isEmpty) {
-                                              return Center(
-                                                child: Text(
-                                                  'No time off requests found.',
-                                                  style: TextStyle(
-                                                    color: Theme.of(context)
-                                                        .textTheme
-                                                        .bodySmall
-                                                        ?.color,
-                                                  ),
-                                                ),
-                                              );
-                                            }
-
-                                            final sortedRequests =
-                                                List<Map<String, dynamic>>.from(
-                                                  requests,
-                                                )..sort((a, b) {
-                                                  final aStatus =
-                                                      a['status'] as String? ??
-                                                      '';
-                                                  final bStatus =
-                                                      b['status'] as String? ??
-                                                      '';
-                                                  if (aStatus == 'pending' &&
-                                                      bStatus != 'pending')
-                                                    return -1;
-                                                  if (bStatus == 'pending' &&
-                                                      aStatus != 'pending')
-                                                    return 1;
-                                                  return 0;
-                                                });
-
-                                            return Column(
-                                              children: sortedRequests.asMap().entries.map((
-                                                entry,
-                                              ) {
-                                                final index = entry.key;
-                                                final req = entry.value;
-                                                final status =
-                                                    req['status'] as String? ??
-                                                    'unknown';
-
-                                                Color statusColor =
-                                                    AppTheme.green;
-                                                if (status == 'pending')
-                                                  statusColor = AppTheme.yellow;
-                                                if (status == 'denied')
-                                                  statusColor =
-                                                      AppTheme.primaryRed;
-
-                                                return Column(
-                                                  children: [
-                                                    if (index > 0)
-                                                      const Divider(),
-                                                    ListTile(
-                                                      contentPadding:
-                                                          EdgeInsets.zero,
-                                                      title: Text(
-                                                        '${req['start_date']} to ${req['end_date']}',
-                                                        style: TextStyle(
-                                                          color:
-                                                              Theme.of(context)
-                                                                  .textTheme
-                                                                  .bodyLarge
-                                                                  ?.color,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          fontSize: 14,
-                                                        ),
-                                                      ),
-                                                      subtitle: Text(
-                                                        '${req['reason'] ?? 'No reason provided'}',
-                                                        style: TextStyle(
-                                                          color:
-                                                              Theme.of(context)
-                                                                  .textTheme
-                                                                  .bodySmall
-                                                                  ?.color,
-                                                          fontSize: 12,
-                                                        ),
-                                                      ),
-                                                      trailing: Container(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 8,
-                                                              vertical: 4,
-                                                            ),
-                                                        decoration: BoxDecoration(
-                                                          color: statusColor
-                                                              .withValues(
-                                                                alpha: 0.2,
-                                                              ),
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                4,
-                                                              ),
-                                                        ),
-                                                        child: Text(
-                                                          status.toUpperCase(),
-                                                          style: TextStyle(
-                                                            color: statusColor,
-                                                            fontSize: 10,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                );
-                                              }).toList(),
-                                            );
-                                          },
-                                          loading: () => const Center(
-                                            child: CircularProgressIndicator(),
-                                          ),
-                                          error: (e, st) => Center(
-                                            child: Text(
-                                              'Error loading time off',
-                                              style: TextStyle(
-                                                color: AppTheme.primaryRed,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        _buildAccountCard(),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    color: Theme.of(context).cardColor,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      side: BorderSide(color: Theme.of(context).dividerColor),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isNarrow = constraints.maxWidth < 900;
+                    if (isNarrow) {
+                      return Column(
                         children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.history,
-                                color: Theme.of(
-                                  context,
-                                ).textTheme.titleLarge?.color,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'History Log',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(
-                                    context,
-                                  ).textTheme.titleLarge?.color,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 24),
-                          if (_historyLogs.isEmpty)
-                            Text(
-                              'No history logs yet.',
-                              style: TextStyle(
-                                color: Theme.of(
-                                  context,
-                                ).textTheme.bodySmall?.color,
-                              ),
+                          _buildAvailabilityCard(context, isScheduleEnabled),
+                          const SizedBox(height: 16),
+                          _buildTimeOffCard(context, isScheduleEnabled),
+                          const SizedBox(height: 16),
+                          _buildAccountCard(isTeamMemberAccountsEnabled),
+                        ],
+                      );
+                    }
+                    return IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _buildAvailabilityCard(
+                              context,
+                              isScheduleEnabled,
                             ),
-                          ..._historyLogs.reversed.map((log) {
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 12.0),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: EdgeInsets.only(top: 4.0),
-                                    child: Icon(
-                                      Icons.circle,
-                                      size: 8,
-                                      color: AppTheme.lightBlue,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          log['event'] ?? 'Event',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Theme.of(
-                                              context,
-                                            ).textTheme.bodyLarge?.color,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          log['date'] ?? '',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall?.color,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildTimeOffCard(
+                              context,
+                              isScheduleEnabled,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildAccountCard(
+                              isTeamMemberAccountsEnabled,
+                            ),
+                          ),
                         ],
                       ),
-                    ),
-                  ),
-                ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                _buildHistoryLogCard(context),
               ],
             ),
-          );
-        },
-        loading: () => Center(
-          child: CircularProgressIndicator(
-            color: Theme.of(context).colorScheme.primary,
           ),
-        ),
-        error: (e, st) => Center(
-          child: Text(
-            'Error: $e',
-            style: TextStyle(color: AppTheme.primaryRed),
-          ),
-        ),
-      ),
-    );
+        );
   }
 
-  void _showPromoteDialog(
+  /// The store this team member belongs to.
+  String get _memberStoreId => (_initialUser?.store?.isNotEmpty ?? false)
+      ? _initialUser!.store!
+      : (ref.read(currentStoreIdProvider) ?? 'QYfhsc0dBHLBbgOflHsA');
+
+  Future<void> _showPromoteDialog(
     StoreSettingsModel settings, {
     VoidCallback? onDismiss,
-  }) {
-    int currentIdx = settings.titles.indexWhere(
-      (t) => t.name == _titleController.text,
+  }) async {
+    final storeId = _memberStoreId;
+    final memberId = _initialUser?.id ?? widget.userId;
+
+    // The journey (for the suggested next titles) and whether they have a
+    // phone with notifications on.
+    TitleJourney? saved;
+    var hasPhone = false;
+    try {
+      saved = await ref
+          .read(titleJourneyProvider(storeId).future)
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {}
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('stores')
+          .doc(storeId)
+          .collection('users')
+          .doc(memberId)
+          .get()
+          .timeout(const Duration(seconds: 3));
+      final tokens = doc.data()?['fcm_tokens'];
+      hasPhone =
+          tokens is List &&
+          tokens.isNotEmpty &&
+          doc.data()?['notifications_enabled'] != false;
+    } catch (_) {}
+    if (!mounted) return;
+
+    final journey = journeyFor(saved, settings.titles);
+    final choices = promotionChoices(
+      _titleController.text,
+      settings.titles,
+      journey,
     );
-    String nextTitle = settings.titles.isNotEmpty
-        ? settings.titles.first.name
-        : '';
-    if (currentIdx != -1 && currentIdx + 1 < settings.titles.length) {
-      nextTitle = settings.titles[currentIdx + 1].name;
+    String selectedTitle =
+        choices.firstOrNull ??
+        (settings.titles.isNotEmpty ? settings.titles.first.name : '');
+    DateTime promoteDate = DateTime.now();
+    bool notify = true;
+    int delay = 0; // minutes; -1 = a time picked below
+    TimeOfDay? pickedTime;
+
+    DateTime revealTime() {
+      final now = DateTime.now();
+      if (!notify) return now;
+      if (delay >= 0) return now.add(Duration(minutes: delay));
+      final t = pickedTime ?? TimeOfDay.fromDateTime(now);
+      var at = DateTime(now.year, now.month, now.day, t.hour, t.minute);
+      if (!at.isAfter(now)) at = at.add(const Duration(days: 1));
+      return at;
     }
 
-    String selectedTitle = nextTitle;
-    DateTime promoteDate = DateTime.now();
+    String timeText(DateTime d) {
+      final now = DateTime.now();
+      final t = TimeOfDay.fromDateTime(d).format(context);
+      final tomorrow = DateTime(now.year, now.month, now.day + 1);
+      final sameDay =
+          d.year == now.year && d.month == now.month && d.day == now.day;
+      if (sameDay) return t;
+      if (d.year == tomorrow.year &&
+          d.month == tomorrow.month &&
+          d.day == tomorrow.day) {
+        return 'tomorrow at $t';
+      }
+      return '${d.month}/${d.day} at $t';
+    }
 
-    showDialog(
+    final firstName = (_preferredNameController.text.trim().isNotEmpty
+        ? _preferredNameController.text.trim()
+        : _firstNameController.text.trim());
+
+    await showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
+            final muted = Theme.of(context).textTheme.bodySmall?.color;
             return AlertDialog(
               backgroundColor: Theme.of(context).cardColor,
               title: Text(
@@ -1679,101 +1434,221 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                   color: Theme.of(context).textTheme.titleLarge?.color,
                 ),
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    value: settings.titles.any((t) => t.name == selectedTitle)
-                        ? selectedTitle
-                        : (settings.titles.isNotEmpty
-                              ? settings.titles.first.name
-                              : null),
-                    items: settings.titles
-                        .map((t) => t.name)
-                        .toSet()
-                        .map(
-                          (name) =>
-                              DropdownMenuItem(value: name, child: Text(name)),
-                        )
-                        .toList(),
-                    onChanged: (val) {
-                      if (val != null)
-                        setStateDialog(() => selectedTitle = val);
-                    },
-                    decoration: const InputDecoration(labelText: 'New Title'),
-                    dropdownColor: Theme.of(context).cardColor,
-                  ),
-                  const SizedBox(height: 16),
-                  InkWell(
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: promoteDate,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2101),
-                        builder: (context, child) {
-                          return Theme(
-                            data: Theme.of(context).copyWith(
-                              colorScheme: Theme.of(context).colorScheme,
-                            ),
-                            child: child!,
-                          );
+              content: SizedBox(
+                width: 420,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: settings.titles.any((t) => t.name == selectedTitle)
+                            ? selectedTitle
+                            : (settings.titles.isNotEmpty
+                                  ? settings.titles.first.name
+                                  : null),
+                        items: settings.titles
+                            .map((t) => t.name)
+                            .toSet()
+                            .map(
+                              (name) => DropdownMenuItem(
+                                value: name,
+                                child: Row(
+                                  children: [
+                                    Text(name),
+                                    if (choices.contains(name)) ...[
+                                      const SizedBox(width: 8),
+                                      Icon(
+                                        Icons.arrow_forward,
+                                        size: 14,
+                                        color: AppTheme.accent2,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setStateDialog(() => selectedTitle = val);
+                          }
                         },
-                      );
-                      if (picked != null) {
-                        setStateDialog(() => promoteDate = picked);
-                      }
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Promotion Date',
-                        border: OutlineInputBorder(),
+                        decoration: const InputDecoration(
+                          labelText: 'New Title',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            promoteDate.toIso8601String().split('T').first,
-                            style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).textTheme.bodyLarge?.color,
-                            ),
+                      if (choices.length > 1) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Next on their journey: ${choices.join(' or ')}',
+                          style: TextStyle(fontSize: 12, color: muted),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: promoteDate,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2101),
+                          );
+                          if (picked != null) {
+                            setStateDialog(() => promoteDate = picked);
+                          }
+                        },
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Promotion Date',
+                            border: OutlineInputBorder(),
                           ),
-                          Icon(
-                            Icons.calendar_today,
-                            size: 16,
-                            color: Theme.of(context).textTheme.bodySmall?.color,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                promoteDate.toIso8601String().split('T').first,
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).textTheme.bodyLarge?.color,
+                                ),
+                              ),
+                              Icon(
+                                Icons.calendar_today,
+                                size: 16,
+                                color: muted,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Divider(),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Push notification to team member'),
+                        subtitle: Text(
+                          'Sends a notification to their phone and shows them a '
+                          'congratulations screen in the Axis Team app.',
+                          style: TextStyle(fontSize: 12, color: muted),
+                        ),
+                        value: notify,
+                        onChanged: (v) => setStateDialog(() => notify = v),
+                      ),
+                      if (notify) ...[
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<int>(
+                          value: delay,
+                          decoration: const InputDecoration(
+                            labelText: 'Send',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: [
+                            const DropdownMenuItem(value: 0, child: Text('Right away')),
+                            const DropdownMenuItem(value: 15, child: Text('In 15 minutes')),
+                            const DropdownMenuItem(value: 30, child: Text('In 30 minutes')),
+                            const DropdownMenuItem(value: 60, child: Text('In 1 hour')),
+                            const DropdownMenuItem(value: 120, child: Text('In 2 hours')),
+                            DropdownMenuItem(
+                              value: -1,
+                              child: Text(
+                                pickedTime == null
+                                    ? 'At a time I pick…'
+                                    : 'At ${pickedTime!.format(context)}',
+                              ),
+                            ),
+                          ],
+                          onChanged: (v) async {
+                            if (v == null) return;
+                            if (v == -1) {
+                              final t = await showTimePicker(
+                                context: context,
+                                initialTime:
+                                    pickedTime ??
+                                    TimeOfDay.fromDateTime(
+                                      DateTime.now().add(
+                                        const Duration(hours: 1),
+                                      ),
+                                    ),
+                              );
+                              if (t == null) return;
+                              setStateDialog(() {
+                                pickedTime = t;
+                                delay = -1;
+                              });
+                            } else {
+                              setStateDialog(() => delay = v);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          delay == 0
+                              ? '${firstName.isEmpty ? 'They' : firstName} will be notified as soon as you promote them.'
+                              : '${firstName.isEmpty ? 'They' : firstName} will be notified at ${timeText(revealTime())}. '
+                                    'Until then the app keeps showing their current title.',
+                          style: TextStyle(fontSize: 12, color: muted),
+                        ),
+                        if (!hasPhone) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                size: 16,
+                                color: AppTheme.orange,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'No phone with notifications turned on yet. They\'ll '
+                                  'see the congratulations the next time they open the app.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.orange,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
-                      ),
-                    ),
+                      ],
+                    ],
                   ),
-                ],
+                ),
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    'Cancel',
-                    style: TextStyle(
-                      color: Theme.of(context).textTheme.bodySmall?.color,
-                    ),
-                  ),
+                  child: Text('Cancel', style: TextStyle(color: muted)),
                 ),
                 ElevatedButton(
                   onPressed: () {
+                    final oldTitle = _titleController.text;
+                    final reveal = revealTime();
                     setState(() {
-                      final oldTitle = _titleController.text;
                       _titleController.text = selectedTitle;
-
                       _historyLogs.add({
                         'event': 'Promoted to $selectedTitle (from $oldTitle)',
                         'date': promoteDate.toIso8601String().split('T').first,
                       });
-
                       _saveProfile();
                     });
+                    if (oldTitle != selectedTitle) {
+                      _announcePromotion(
+                        storeId: storeId,
+                        memberId: memberId,
+                        firstName: firstName,
+                        from: oldTitle,
+                        to: selectedTitle,
+                        date: promoteDate,
+                        revealAt: reveal,
+                        notify: notify,
+                      );
+                    }
                     Navigator.pop(context);
                   },
                   style: ElevatedButton.styleFrom(
@@ -1787,9 +1662,84 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
           },
         );
       },
-    ).then((_) {
-      if (onDismiss != null) onDismiss();
-    });
+    );
+    if (onDismiss != null) onDismiss();
+  }
+
+  /// Records the promotion for the phone app (the congratulations screen and
+  /// the title change it animates) and, when asked, schedules the push
+  /// notification (sent by the sendDueNotifications Cloud Function).
+  Future<void> _announcePromotion({
+    required String storeId,
+    required String memberId,
+    required String firstName,
+    required String from,
+    required String to,
+    required DateTime date,
+    required DateTime revealAt,
+    required bool notify,
+  }) async {
+    final db = FirebaseFirestore.instance;
+    final note = db.collection('notifications').doc();
+    final batch = db.batch();
+    batch.set(
+      db.collection('stores').doc(storeId).collection('users').doc(memberId),
+      {
+        'promotion': {
+          'id': note.id,
+          'from': from,
+          'to': to,
+          'date': date.toIso8601String().split('T').first,
+          'reveal_at': Timestamp.fromDate(revealAt),
+          'notify': notify,
+          'seen': false,
+          'created_at': FieldValue.serverTimestamp(),
+        },
+      },
+      SetOptions(mergeFields: ['promotion']),
+    );
+    if (notify) {
+      batch.set(note, {
+        'type': 'promotion',
+        'store_id': storeId,
+        'member_id': memberId,
+        'promotion_id': note.id,
+        'title': firstName.isEmpty
+            ? 'Congratulations! 🎉'
+            : 'Congratulations, $firstName! 🎉',
+        'body': 'You\'ve been promoted to $to. Tap to see your new title.',
+        'send_at': Timestamp.fromDate(revealAt),
+        'status': 'scheduled',
+        'created_at': FieldValue.serverTimestamp(),
+        'created_by': FirebaseAuth.instance.currentUser?.uid,
+      });
+    }
+    try {
+      await batch.commit();
+      if (!mounted) return;
+      final when = TimeOfDay.fromDateTime(revealAt).format(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            notify
+                ? (revealAt.difference(DateTime.now()).inMinutes < 1
+                      ? 'Promoted to $to. Their notification is on its way.'
+                      : 'Promoted to $to. Their notification goes out at $when.')
+                : 'Promoted to $to.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Promoted, but the notification couldn\'t be scheduled: $e',
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildChecklistSection(UserModel user, StoreSettingsModel settings) {
@@ -1829,8 +1779,13 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
 
     final completedChecklists =
         _initialUser?.completedChecklists ?? user.completedChecklists ?? [];
+    final currentPosition = _positionController.text.isNotEmpty
+        ? _positionController.text
+        : user.position;
     final activeChecklists = allUserChecklists
-        .where((c) => c.items.isNotEmpty && !completedChecklists.contains(c.id))
+        .where((c) =>
+            c.tasksForPosition(currentPosition).isNotEmpty &&
+            !completedChecklists.contains(c.id))
         .toList();
     if (activeChecklists.isEmpty) return const SizedBox.shrink();
 
@@ -1840,6 +1795,19 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
     return Column(
       children: activeChecklists.map((userChecklist) {
         final color = AppTheme.getColorFromName(userChecklist.color);
+        final applicableTasks = userChecklist.tasksForPosition(currentPosition);
+        final completedInThis = applicableTasks.where((task) =>
+            completedTasks.any((t) => t.toString().trim() == task.text.trim())
+        ).length;
+        final cleanChecklistName = userChecklist.name
+            .replaceAll(
+              RegExp(r'\bchecklist\b', caseSensitive: false),
+              '',
+            )
+            .trim();
+        final checklistHeading = cleanChecklistName.isNotEmpty
+            ? '$cleanChecklistName Checklist'
+            : userChecklist.name;
 
         return Column(
           children: [
@@ -1867,7 +1835,7 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '${userChecklist.name} Checklist',
+                              checklistHeading,
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -1879,7 +1847,7 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                           ],
                         ),
                         Text(
-                          '${completedTasks.length}/${userChecklist.items.length} Completed',
+                          '$completedInThis/${applicableTasks.length} Completed',
                           style: TextStyle(
                             color: color,
                             fontWeight: FontWeight.bold,
@@ -1888,165 +1856,206 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: userChecklist.items.length,
-                      itemBuilder: (context, index) {
-                        final task = userChecklist.items[index];
-                        final isCompleted = completedTasks.any(
-                          (t) => t.toString().trim() == task.toString().trim(),
-                        );
-                        return InkWell(
-                          onTap: () async {
-                            List<String> newCompleted = completedTasks
-                                .map((e) => e.toString())
-                                .toList();
-                            if (!isCompleted) {
-                              if (!newCompleted.any(
-                                (t) =>
-                                    t.toString().trim() ==
-                                    task.toString().trim(),
-                              )) {
-                                newCompleted.add(task.toString());
-                              }
-                            } else {
-                              newCompleted.removeWhere(
-                                (t) =>
-                                    t.toString().trim() ==
-                                    task.toString().trim(),
-                              );
-                            }
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        int columns = 1;
+                        if (constraints.maxWidth >= 900) {
+                          columns = 3;
+                        } else if (constraints.maxWidth >= 500) {
+                          columns = 2;
+                        }
+                        const spacing = 16.0;
+                        final itemWidth = columns == 1
+                            ? constraints.maxWidth
+                            : ((constraints.maxWidth - ((columns - 1) * spacing)) /
+                                    columns)
+                                .floorToDouble();
 
-                            UserModel updatedUser = _initialUser!.copyWith(
-                              completedTasks: newCompleted,
+                        return Wrap(
+                          spacing: spacing,
+                          runSpacing: 4.0,
+                          children: applicableTasks.map((taskItem) {
+                            final task = taskItem.text;
+                            final isCompleted = completedTasks.any(
+                              (t) => t.toString().trim() == task.trim(),
                             );
-
-                            setState(() {
-                              _initialUser = updatedUser;
-                            });
-
-                            if (!mounted) return;
-
-                            if (newCompleted.length ==
-                                userChecklist.items.length) {
-                              final newLogs = _historyLogs
-                                  .map((e) => Map<String, dynamic>.from(e))
-                                  .toList();
-                              newLogs.add({
-                                'event':
-                                    'Completed ${userChecklist.name} Checklist',
-                                'date': DateTime.now()
-                                    .toIso8601String()
-                                    .split('T')
-                                    .first,
-                              });
-                              _historyLogs = newLogs;
-
-                              final newCompletedChecklists = List<String>.from(
-                                completedChecklists,
-                              );
-                              if (!newCompletedChecklists.contains(
-                                userChecklist.id,
-                              )) {
-                                newCompletedChecklists.add(userChecklist.id);
-                              }
-
-                              final fullyUpdatedUser = updatedUser.copyWith(
-                                historyLogs: newLogs,
-                              );
-                              setState(() {
-                                _initialUser = fullyUpdatedUser;
-                              });
-
-                              ref
-                                  .read(firestoreServiceProvider)
-                                  .updateUser(fullyUpdatedUser);
-
-                              if (titleConfig?.autoPromoteOnChecklist == true) {
-                                WidgetsBinding.instance.addPostFrameCallback((
-                                  _,
-                                ) {
-                                  if (mounted) {
-                                    _showPromoteDialog(
-                                      settings,
-                                      onDismiss: () async {
-                                        if (mounted && _initialUser != null) {
-                                          final afterDialogUser = _initialUser!
-                                              .copyWith(
-                                                completedTasks: [],
-                                                completedChecklists:
-                                                    newCompletedChecklists,
-                                              );
-                                          setState(() {
-                                            _initialUser = afterDialogUser;
-                                          });
-                                          await ref
-                                              .read(firestoreServiceProvider)
-                                              .updateUser(afterDialogUser);
-                                        }
-                                      },
+                            return SizedBox(
+                              width: itemWidth,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(6),
+                                onTap: () async {
+                                  List<String> newCompleted = completedTasks
+                                      .map((e) => e.toString())
+                                      .toList();
+                                  if (!isCompleted) {
+                                    if (!newCompleted.any(
+                                      (t) =>
+                                          t.toString().trim() ==
+                                          task.trim(),
+                                    )) {
+                                      newCompleted.add(task);
+                                    }
+                                  } else {
+                                    newCompleted.removeWhere(
+                                      (t) =>
+                                          t.toString().trim() ==
+                                          task.trim(),
                                     );
                                   }
-                                });
-                              } else {
-                                Future.delayed(
-                                  const Duration(seconds: 1),
-                                  () async {
-                                    if (mounted && _initialUser != null) {
-                                      final afterDialogUser = _initialUser!
-                                          .copyWith(
-                                            completedTasks: [],
-                                            completedChecklists:
-                                                newCompletedChecklists,
-                                          );
-                                      setState(() {
-                                        _initialUser = afterDialogUser;
-                                      });
-                                      await ref
-                                          .read(firestoreServiceProvider)
-                                          .updateUser(afterDialogUser);
-                                    }
-                                  },
-                                );
-                              }
-                            } else {
-                              ref
-                                  .read(firestoreServiceProvider)
-                                  .updateUser(updatedUser);
-                            }
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 8.0,
-                              horizontal: 8.0,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  isCompleted
-                                      ? Icons.check_box
-                                      : Icons.check_box_outline_blank,
-                                  color: isCompleted
-                                      ? color
-                                      : Theme.of(context).unselectedWidgetColor,
-                                  size: 24,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    task,
-                                    style: TextStyle(
-                                      decoration: isCompleted
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                      color: isCompleted ? Colors.grey : null,
+
+                                  UserModel updatedUser = _initialUser!.copyWith(
+                                    completedTasks: newCompleted,
+                                  );
+
+                                  setState(() {
+                                    _initialUser = updatedUser;
+                                  });
+
+                                  if (!mounted) return;
+
+                                  final allApplicableDone = applicableTasks.every(
+                                    (t) => newCompleted.any(
+                                      (c) => c.trim() == t.text.trim(),
                                     ),
+                                  );
+
+                                  if (allApplicableDone) {
+                                    final newLogs = _historyLogs
+                                        .map((e) => Map<String, dynamic>.from(e))
+                                        .toList();
+                                    newLogs.add({
+                                      'event':
+                                          'Completed ${userChecklist.name} Checklist',
+                                      'date': DateTime.now()
+                                          .toIso8601String()
+                                          .split('T')
+                                          .first,
+                                    });
+                                    _historyLogs = newLogs;
+
+                                    final newCompletedChecklists =
+                                        List<String>.from(completedChecklists);
+                                    if (!newCompletedChecklists.contains(
+                                      userChecklist.id,
+                                    )) {
+                                      newCompletedChecklists.add(
+                                        userChecklist.id,
+                                      );
+                                    }
+
+                                    final fullyUpdatedUser =
+                                        updatedUser.copyWith(
+                                          historyLogs: newLogs,
+                                        );
+                                    setState(() {
+                                      _initialUser = fullyUpdatedUser;
+                                    });
+
+                                    ref
+                                        .read(firestoreServiceProvider)
+                                        .updateUser(fullyUpdatedUser);
+
+                                    if (titleConfig?.autoPromoteOnChecklist ==
+                                        true) {
+                                      WidgetsBinding.instance
+                                          .addPostFrameCallback((_) {
+                                        if (mounted) {
+                                          _showPromoteDialog(
+                                            settings,
+                                            onDismiss: () async {
+                                              if (mounted &&
+                                                  _initialUser != null) {
+                                                final afterDialogUser =
+                                                    _initialUser!.copyWith(
+                                                      completedTasks: [],
+                                                      completedChecklists:
+                                                          newCompletedChecklists,
+                                                    );
+                                                setState(() {
+                                                  _initialUser =
+                                                      afterDialogUser;
+                                                });
+                                                await ref
+                                                    .read(
+                                                      firestoreServiceProvider,
+                                                    )
+                                                    .updateUser(
+                                                      afterDialogUser,
+                                                    );
+                                              }
+                                            },
+                                          );
+                                        }
+                                      });
+                                    } else {
+                                      Future.delayed(
+                                        const Duration(seconds: 1),
+                                        () async {
+                                          if (mounted && _initialUser != null) {
+                                            final afterDialogUser =
+                                                _initialUser!.copyWith(
+                                                  completedTasks: [],
+                                                  completedChecklists:
+                                                      newCompletedChecklists,
+                                                );
+                                            setState(() {
+                                              _initialUser = afterDialogUser;
+                                            });
+                                            await ref
+                                                .read(
+                                                  firestoreServiceProvider,
+                                                )
+                                                .updateUser(afterDialogUser);
+                                          }
+                                        },
+                                      );
+                                    }
+                                  } else {
+                                    ref
+                                        .read(firestoreServiceProvider)
+                                        .updateUser(updatedUser);
+                                  }
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8.0,
+                                    horizontal: 8.0,
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        isCompleted
+                                            ? Icons.check_box
+                                            : Icons.check_box_outline_blank,
+                                        color: isCompleted
+                                            ? color
+                                            : Theme.of(
+                                                context,
+                                              ).unselectedWidgetColor,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          task,
+                                          style: TextStyle(
+                                            fontSize: 13.5,
+                                            decoration: isCompleted
+                                                ? TextDecoration.lineThrough
+                                                : null,
+                                            color: isCompleted
+                                                ? Colors.grey
+                                                : null,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
+                              ),
+                            );
+                          }).toList(),
                         );
                       },
                     ),
@@ -2361,144 +2370,614 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
     );
   }
 
-  Widget _buildAccountCard() {
-    final hasAccount =
-        _initialUser?.email != null && _initialUser!.email!.isNotEmpty;
-
-    return Expanded(
-      child: Card(
-        color: Theme.of(context).cardColor,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: Theme.of(context).dividerColor),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.person_pin,
-                    color: Theme.of(context).textTheme.titleLarge?.color,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Account Login',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).textTheme.titleLarge?.color,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (hasAccount) ...[
+  Widget _buildAvailabilityCard(BuildContext context, bool isScheduleEnabled) {
+    return Card(
+      color: Theme.of(context).cardColor,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: Theme.of(context).dividerColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.calendar_month,
+                  color: Theme.of(context).textTheme.titleLarge?.color,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
                 Text(
-                  'Email: ${_initialUser!.email}',
+                  'Availability',
                   style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyLarge?.color,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Email: ${_initialUser!.email}',
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodySmall?.color,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Center(
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      try {
-                        await FirebaseAuth.instance.sendPasswordResetEmail(
-                          email: _initialUser!.email!,
-                        );
-                        if (context.mounted)
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Email sent')),
-                          );
-                      } catch (e) {
-                        if (context.mounted)
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(SnackBar(content: Text('Error: $e')));
-                      }
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.primary,
-                      side: BorderSide(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    child: const Text('Send Password Reset Email'),
-                  ),
-                ),
-              ] else ...[
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16.0),
-                    child: Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 16,
-                      runSpacing: 16,
-                      children: [
-                        ElevatedButton(
-                          onPressed: _showCreateAccountDialog,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.primary,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: const Text('Create Account'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            final baseUrl =
-                                'https://project-attendance-app.web.app/auth';
-                            final query = Uri(
-                              queryParameters: {
-                                if (_initialUser?.firstName != null &&
-                                    _initialUser!.firstName!.isNotEmpty)
-                                  'firstName': _initialUser!.firstName,
-                                if (_initialUser?.lastName != null &&
-                                    _initialUser!.lastName!.isNotEmpty)
-                                  'lastName': _initialUser!.lastName,
-                                if (_initialUser?.email != null &&
-                                    _initialUser!.email!.isNotEmpty)
-                                  'email': _initialUser!.email,
-                                'memberId': widget.userId,
-                                if (_initialUser?.store != null)
-                                  'storeId': _initialUser!.store,
-                              },
-                            ).query;
-                            final link = '$baseUrl?$query';
-                            Clipboard.setData(ClipboardData(text: link));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Setup link copied to clipboard!',
-                                ),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.link),
-                          label: const Text('Copy Setup Link'),
-                        ),
-                      ],
-                    ),
+                    color: Theme.of(context).textTheme.titleLarge?.color,
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 16),
+            if (!isScheduleEnabled)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.calendar_month_outlined,
+                        size: 28,
+                        color: Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Enable schedule for the store to see this tile.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).textTheme.bodySmall?.color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (!(_initialUser?.email != null &&
+                _initialUser!.email!.isNotEmpty))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                child: Center(
+                  child: Text(
+                    'Must have an account created.',
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ref
+                  .watch(userAvailabilityProvider(widget.userId))
+                  .when(
+                    data: (availability) {
+                      if (availability == null || availability.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16.0),
+                          child: Center(
+                            child: Text(
+                              'No availability set.',
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).textTheme.bodySmall?.color,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      final days = [
+                        'monday',
+                        'tuesday',
+                        'wednesday',
+                        'thursday',
+                        'friday',
+                        'saturday',
+                        'sunday',
+                      ];
+
+                      String formatTime(String time24) {
+                        try {
+                          final parts = time24.split(':');
+                          int h = int.parse(parts[0]);
+                          final m = parts[1];
+                          final suffix = h >= 12 ? 'PM' : 'AM';
+                          if (h == 0) {
+                            h = 12;
+                          } else if (h > 12) {
+                            h -= 12;
+                          }
+                          return '$h:$m $suffix';
+                        } catch (_) {
+                          return time24;
+                        }
+                      }
+
+                      return Column(
+                        children: days.map((day) {
+                          final slots =
+                              availability[day] as List<dynamic>? ?? [];
+
+                          final dayName =
+                              day.substring(0, 1).toUpperCase() +
+                              day.substring(1);
+
+                          String availabilityText = 'Unavailable';
+                          if (slots.isNotEmpty) {
+                            availabilityText = slots
+                                .map(
+                                  (s) =>
+                                      '${formatTime(s['start'])} - ${formatTime(s['end'])}',
+                                )
+                                .join(', ');
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4.0),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 100,
+                                  child: Text(
+                                    dayName,
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).textTheme.bodyLarge?.color,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    availabilityText,
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall?.color,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    },
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, st) => Center(
+                      child: Text(
+                        'Error loading availability',
+                        style: TextStyle(color: AppTheme.primaryRed),
+                      ),
+                    ),
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeOffCard(BuildContext context, bool isScheduleEnabled) {
+    return Card(
+      color: Theme.of(context).cardColor,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: Theme.of(context).dividerColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.flight_takeoff,
+                  color: Theme.of(context).textTheme.titleLarge?.color,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Time Off Requests',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).textTheme.titleLarge?.color,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (!isScheduleEnabled)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.flight_takeoff_outlined,
+                        size: 28,
+                        color: Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Enable schedule for the store to see this tile.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).textTheme.bodySmall?.color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (!(_initialUser?.email != null &&
+                _initialUser!.email!.isNotEmpty))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                child: Center(
+                  child: Text(
+                    'Must have an account created.',
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ref
+                  .watch(userTimeOffRequestsProvider(widget.userId))
+                  .when(
+                    data: (requests) {
+                      if (requests.isEmpty) {
+                        return Center(
+                          child: Text(
+                            'No time off requests found.',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.color,
+                            ),
+                          ),
+                        );
+                      }
+
+                      final sortedRequests =
+                          List<Map<String, dynamic>>.from(requests)..sort((
+                            a,
+                            b,
+                          ) {
+                            final aStatus = a['status'] as String? ?? '';
+                            final bStatus = b['status'] as String? ?? '';
+                            if (aStatus == 'pending' && bStatus != 'pending') {
+                              return -1;
+                            }
+                            if (bStatus == 'pending' && aStatus != 'pending') {
+                              return 1;
+                            }
+                            return 0;
+                          });
+
+                      return Column(
+                        children: sortedRequests.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final req = entry.value;
+                          final status = req['status'] as String? ?? 'unknown';
+
+                          Color statusColor = AppTheme.green;
+                          if (status == 'pending') {
+                            statusColor = AppTheme.yellow;
+                          }
+                          if (status == 'denied') {
+                            statusColor = AppTheme.primaryRed;
+                          }
+
+                          return Column(
+                            children: [
+                              if (index > 0) const Divider(),
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  '${req['start_date']} to ${req['end_date']}',
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).textTheme.bodyLarge?.color,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '${req['reason'] ?? 'No reason provided'}',
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall?.color,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                trailing: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: statusColor.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    status.toUpperCase(),
+                                    style: TextStyle(
+                                      color: statusColor,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        }).toList(),
+                      );
+                    },
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, st) => Center(
+                      child: Text(
+                        'Error loading time off',
+                        style: TextStyle(color: AppTheme.primaryRed),
+                      ),
+                    ),
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAccountCard(bool isTeamMemberAccountsEnabled) {
+    final hasAccount =
+        _initialUser?.email != null && _initialUser!.email!.isNotEmpty;
+
+    return Card(
+      color: Theme.of(context).cardColor,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: Theme.of(context).dividerColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.person_pin,
+                  color: Theme.of(context).textTheme.titleLarge?.color,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Account Login',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).textTheme.titleLarge?.color,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (!isTeamMemberAccountsEnabled)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.lock_outline,
+                        size: 28,
+                        color: Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Enable schedule or shift board to create an account.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).textTheme.bodySmall?.color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (hasAccount) ...[
+              Text(
+                'Email: ${_initialUser!.email}',
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: OutlinedButton(
+                  onPressed: () async {
+                    try {
+                      await FirebaseAuth.instance.sendPasswordResetEmail(
+                        email: _initialUser!.email!,
+                      );
+                      if (context.mounted)
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Email sent')),
+                        );
+                    } catch (e) {
+                      if (context.mounted)
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+                    }
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.primary,
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  child: const Text('Send Password Reset Email'),
+                ),
+              ),
+            ] else ...[
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16.0),
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: [
+                      ElevatedButton(
+                        onPressed: _showCreateAccountDialog,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.primary,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Create Account'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          final baseUrl =
+                              'https://project-attendance-app.web.app/auth';
+                          final query = Uri(
+                            queryParameters: {
+                              if (_initialUser?.firstName != null &&
+                                  _initialUser!.firstName!.isNotEmpty)
+                                'firstName': _initialUser!.firstName,
+                              if (_initialUser?.lastName != null &&
+                                  _initialUser!.lastName!.isNotEmpty)
+                                'lastName': _initialUser!.lastName,
+                              if (_initialUser?.email != null &&
+                                  _initialUser!.email!.isNotEmpty)
+                                'email': _initialUser!.email,
+                              'memberId': widget.userId,
+                              if (_initialUser?.store != null)
+                                'storeId': _initialUser!.store,
+                            },
+                          ).query;
+                          final link = '$baseUrl?$query';
+                          Clipboard.setData(ClipboardData(text: link));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Setup link copied to clipboard!'),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.link),
+                        label: const Text('Copy Setup Link'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
-          ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryLogCard(BuildContext context) {
+    return Card(
+      color: Theme.of(context).cardColor,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: Theme.of(context).dividerColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.history,
+                  color: Theme.of(context).textTheme.titleLarge?.color,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'History Log',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).textTheme.titleLarge?.color,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            if (_historyLogs.isEmpty)
+              Text(
+                'No history logs yet.',
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodySmall?.color,
+                ),
+              ),
+            ..._historyLogs.reversed.map((log) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4.0),
+                      child: Icon(
+                        Icons.circle,
+                        size: 8,
+                        color: AppTheme.lightBlue,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            log['event'] ?? 'Event',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodyLarge?.color,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            log['date'] ?? '',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.color,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
         ),
       ),
     );
@@ -2720,4 +3199,22 @@ class _MemberDetailViewState extends ConsumerState<MemberDetailView> {
       },
     );
   }
+}
+
+/// Opens the member's profile inside a modal dialog so the user doesn't lose their place.
+Future<void> showMemberProfileDialog(BuildContext context, String userId) {
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1000, maxHeight: 850),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: MemberDetailView(userId: userId),
+        ),
+      ),
+    ),
+  );
 }

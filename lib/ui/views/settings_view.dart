@@ -1,4 +1,6 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/app_providers.dart';
@@ -9,6 +11,7 @@ import '../widgets/settings_checklists_card.dart';
 import '../widgets/settings_manage_history_logs_card.dart';
 import '../widgets/settings_employee_data_summary_card.dart';
 import '../widgets/settings_access_card.dart';
+import '../widgets/settings_takeout_card.dart';
 import '../widgets/equal_height_row.dart';
 
 import '../../models/store_settings_model.dart';
@@ -20,7 +23,6 @@ class SettingsView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final currentStoreId = ref.watch(currentStoreIdProvider);
     final allStoresAsync = ref.watch(allStoresStreamProvider);
-    final themeMode = ref.watch(themeModeProvider);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -28,31 +30,23 @@ class SettingsView extends ConsumerWidget {
           ? _buildSingleStore(context, ref, currentStoreId, null)
           : allStoresAsync.when(
               data: (stores) {
-                if (stores.isEmpty) return const Center(child: Text('No stores'));
-                return LayoutBuilder(
-                  builder: (context, constraints) {
-                    final width = stores.length <= 2 ? constraints.maxWidth : stores.length * 500.0;
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: width,
-                        child: CustomScrollView(
-                          slivers: [
-                            SliverPersistentHeader(
-                              pinned: true,
-                              delegate: _StoreHeadersDelegate(stores),
-                            ),
-                            SliverPadding(
-                              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                              sliver: SliverToBoxAdapter(
-                                child: _buildAlignedStores(context, ref, stores),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                final currentUser = ref.watch(currentUserProvider);
+                final ownedStoresList = (currentUser?['owned_stores'] as List?)
+                    ?.map((e) => e.toString())
+                    .toList() ?? [];
+                final visibleStores = ownedStoresList.isNotEmpty
+                    ? stores.where((s) => ownedStoresList.contains(s['id'])).toList()
+                    : stores;
+
+                if (visibleStores.isEmpty)
+                  return const Center(child: Text('No stores'));
+                return _AllStoresSettingsView(
+                  visibleStores: visibleStores,
+                  content: _buildAlignedStores(
+                    context,
+                    ref,
+                    visibleStores,
+                  ),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -63,8 +57,14 @@ class SettingsView extends ConsumerWidget {
 
   /// "All Stores": one row per settings card, each store's card as tall as
   /// the tallest one in that row.
-  Widget _buildAlignedStores(BuildContext context, WidgetRef ref, List<Map<String, dynamic>> stores) {
-    final perStore = [for (final s in stores) _sectionsFor(context, ref, s['id'] as String)];
+  Widget _buildAlignedStores(
+    BuildContext context,
+    WidgetRef ref,
+    List<Map<String, dynamic>> stores,
+  ) {
+    final perStore = [
+      for (final s in stores) _sectionsFor(context, ref, s['id'] as String),
+    ];
     final rows = perStore.map((l) => l.length).reduce((a, b) => a > b ? a : b);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -83,14 +83,26 @@ class SettingsView extends ConsumerWidget {
     );
   }
 
-  Widget _buildSingleStore(BuildContext context, WidgetRef ref, String storeId, String? storeName) {
+  Widget _buildSingleStore(
+    BuildContext context,
+    WidgetRef ref,
+    String storeId,
+    String? storeName,
+  ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (storeName != null) ...[
-            Text(storeName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+            Text(
+              storeName,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.blueAccent,
+              ),
+            ),
             const SizedBox(height: 24),
           ],
           _buildSingleStoreBody(context, ref, storeId),
@@ -99,7 +111,11 @@ class SettingsView extends ConsumerWidget {
     );
   }
 
-  Widget _buildSingleStoreBody(BuildContext context, WidgetRef ref, String storeId) {
+  Widget _buildSingleStoreBody(
+    BuildContext context,
+    WidgetRef ref,
+    String storeId,
+  ) {
     final sections = _sectionsFor(context, ref, storeId);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -115,15 +131,29 @@ class SettingsView extends ConsumerWidget {
   /// The settings cards of one store, in order (one placeholder while it
   /// loads). In "All Stores" each card is lined up with the same card of the
   /// other stores.
-  List<Widget> _sectionsFor(BuildContext context, WidgetRef ref, String storeId) {
+  List<Widget> _sectionsFor(
+    BuildContext context,
+    WidgetRef ref,
+    String storeId,
+  ) {
     final settingsAsync = ref.watch(specificStoreSettingsProvider(storeId));
     final isAllStoresMode = ref.watch(currentStoreIdProvider) == null;
-    final List<Map<String, dynamic>> allStores = isAllStoresMode ? (ref.watch(allStoresStreamProvider).valueOrNull ?? []) : [];
-    
+    final List<Map<String, dynamic>> allStores = isAllStoresMode
+        ? (ref.watch(allStoresStreamProvider).valueOrNull ?? [])
+        : [];
+    final currentUser = ref.watch(currentUserProvider);
+    final ownedStoresList = (currentUser?['owned_stores'] as List?)
+        ?.map((e) => e.toString())
+        .toList() ?? [];
+    final visibleStores = ownedStoresList.isNotEmpty
+        ? allStores.where((s) => ownedStoresList.contains(s['id'])).toList()
+        : allStores;
+
     return settingsAsync.when(
       data: (settings) {
-        if (settings == null) return const [Center(child: Text('Settings not available'))];
-        
+        if (settings == null)
+          return const [Center(child: Text('Settings not available'))];
+
         bool titlesTagsDiffer = false;
         bool checklistsDiffer = false;
         bool positionsDiffer = false;
@@ -133,12 +163,15 @@ class SettingsView extends ConsumerWidget {
         bool showOwnerInRosterDiffer = false;
 
         if (isAllStoresMode) {
-          for (final store in allStores) {
+          for (final store in visibleStores) {
             final sid = store['id'] as String;
             if (sid == storeId) continue;
-            final otherSettings = ref.watch(specificStoreSettingsProvider(sid)).valueOrNull;
+            final otherSettings = ref
+                .watch(specificStoreSettingsProvider(sid))
+                .valueOrNull;
             if (otherSettings != null) {
-              if (!listEquals(settings.titles, otherSettings.titles) || !listEquals(settings.tags, otherSettings.tags)) {
+              if (!listEquals(settings.titles, otherSettings.titles) ||
+                  !listEquals(settings.tags, otherSettings.tags)) {
                 titlesTagsDiffer = true;
               }
               if (!listEquals(settings.checklists, otherSettings.checklists)) {
@@ -147,28 +180,53 @@ class SettingsView extends ConsumerWidget {
               if (!listEquals(settings.positions, otherSettings.positions)) {
                 positionsDiffer = true;
               }
-              if (!listEquals(settings.workingTimes, otherSettings.workingTimes)) {
+              if (!listEquals(
+                settings.workingTimes,
+                otherSettings.workingTimes,
+              )) {
                 workingTimesDiffer = true;
               }
-              if (!listEquals(settings.designations, otherSettings.designations)) {
+              if (!listEquals(
+                settings.designations,
+                otherSettings.designations,
+              )) {
                 designationsDiffer = true;
               }
-              if (!listEquals(settings.employeeDataSummaryFields, otherSettings.employeeDataSummaryFields)) {
+              if (!listEquals(
+                settings.employeeDataSummaryFields,
+                otherSettings.employeeDataSummaryFields,
+              )) {
                 employeeDataSummaryFieldsDiffer = true;
               }
-              if (settings.showOwnerInRoster != otherSettings.showOwnerInRoster) {
+              if (settings.showOwnerInRoster !=
+                  otherSettings.showOwnerInRoster) {
                 showOwnerInRosterDiffer = true;
               }
             }
           }
         }
 
-        Widget? buildCopyButton(String fieldName, StoreSettingsModel Function(StoreSettingsModel, StoreSettingsModel) updateFn) {
+        Widget? buildCopyButton(
+          String fieldName,
+          StoreSettingsModel Function(StoreSettingsModel, StoreSettingsModel)
+          updateFn,
+        ) {
           return InkWell(
             onTap: () {
-              _showCopyDialog(context, ref, storeId, fieldName, allStores, settings, updateFn);
+              _showCopyDialog(
+                context,
+                ref,
+                storeId,
+                fieldName,
+                allStores,
+                settings,
+                updateFn,
+              );
             },
-            borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), bottomRight: Radius.circular(12)),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(12),
+              bottomRight: Radius.circular(12),
+            ),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -187,53 +245,165 @@ class SettingsView extends ConsumerWidget {
         }
 
         return [
-            SettingsTitleTagCard(
-              settings: settings,
-              onUpdate: (newSettings) {
-                ref.read(firestoreServiceProvider).updateStoreSettingsForSpecificStore(storeId, newSettings);
-              },
-              copyButton: titlesTagsDiffer ? buildCopyButton('Titles & Tags', (current, dest) => dest.copyWith(titles: current.titles, tags: current.tags)) : null,
-            ),
-            SettingsAccessCard(
-              settings: settings,
-              onUpdate: (newSettings) {
-                ref.read(firestoreServiceProvider).updateStoreSettingsForSpecificStore(storeId, newSettings);
-              },
-              copyButton: showOwnerInRosterDiffer ? buildCopyButton('Access', (current, dest) => dest.copyWith(showOwnerInRoster: current.showOwnerInRoster)) : null,
-            ),
-            SettingsChecklistsCard(
-              settings: settings,
-              onUpdate: (newSettings) {
-                ref.read(firestoreServiceProvider).updateStoreSettingsForSpecificStore(storeId, newSettings);
-              },
-              copyButton: checklistsDiffer ? buildCopyButton('Checklists', (current, dest) => dest.copyWith(checklists: current.checklists)) : null,
-            ),
-            SettingsManageHistoryLogsCard(storeId: storeId),
-            SettingsEmployeeDataSummaryCard(
-              settings: settings,
-              onUpdate: (newSettings) {
-                ref.read(firestoreServiceProvider).updateStoreSettingsForSpecificStore(storeId, newSettings);
-              },
-              copyButton: employeeDataSummaryFieldsDiffer ? buildCopyButton('Data Summary', (current, dest) => dest.copyWith(employeeDataSummaryFields: current.employeeDataSummaryFields)) : null,
-            ),
-            _buildListEditor(context, ref, 'Positions', settings.positions, (newItems) {
-              ref.read(firestoreServiceProvider).updateStoreSettingsForSpecificStore(storeId, settings.copyWith(positions: newItems));
-            }, copyButton: positionsDiffer ? buildCopyButton('Positions', (current, dest) => dest.copyWith(positions: current.positions)) : null),
-            _buildListEditor(context, ref, 'Working Times', settings.workingTimes, (newItems) {
-              ref.read(firestoreServiceProvider).updateStoreSettingsForSpecificStore(storeId, settings.copyWith(workingTimes: newItems));
-            }, copyButton: workingTimesDiffer ? buildCopyButton('Working Times', (current, dest) => dest.copyWith(workingTimes: current.workingTimes)) : null),
-            _buildListEditor(context, ref, 'Designations', settings.designations, (newItems) {
-              ref.read(firestoreServiceProvider).updateStoreSettingsForSpecificStore(storeId, settings.copyWith(designations: newItems));
-            }, copyButton: designationsDiffer ? buildCopyButton('Designations', (current, dest) => dest.copyWith(designations: current.designations)) : null),
+          SettingsTitleTagCard(
+            settings: settings,
+            storeId: storeId,
+            isAllStoresMode: isAllStoresMode,
+            onUpdate: (newSettings) {
+              ref
+                  .read(firestoreServiceProvider)
+                  .updateStoreSettingsForSpecificStore(storeId, newSettings);
+            },
+            copyButton: titlesTagsDiffer
+                ? buildCopyButton(
+                    'Titles & Tags',
+                    (current, dest) => dest.copyWith(
+                      titles: current.titles,
+                      tags: current.tags,
+                    ),
+                  )
+                : null,
+          ),
+          SettingsAccessCard(
+            settings: settings,
+            onUpdate: (newSettings) {
+              ref
+                  .read(firestoreServiceProvider)
+                  .updateStoreSettingsForSpecificStore(storeId, newSettings);
+            },
+            copyButton: showOwnerInRosterDiffer
+                ? buildCopyButton(
+                    'Access',
+                    (current, dest) => dest.copyWith(
+                      showOwnerInRoster: current.showOwnerInRoster,
+                    ),
+                  )
+                : null,
+          ),
+          SettingsChecklistsCard(
+            settings: settings,
+            onUpdate: (newSettings) {
+              ref
+                  .read(firestoreServiceProvider)
+                  .updateStoreSettingsForSpecificStore(storeId, newSettings);
+            },
+            copyButton: checklistsDiffer
+                ? buildCopyButton(
+                    'Checklists',
+                    (current, dest) =>
+                        dest.copyWith(checklists: current.checklists),
+                  )
+                : null,
+          ),
+          SettingsManageHistoryLogsCard(storeId: storeId),
+          SettingsEmployeeDataSummaryCard(
+            settings: settings,
+            onUpdate: (newSettings) {
+              ref
+                  .read(firestoreServiceProvider)
+                  .updateStoreSettingsForSpecificStore(storeId, newSettings);
+            },
+            copyButton: employeeDataSummaryFieldsDiffer
+                ? buildCopyButton(
+                    'Data Summary',
+                    (current, dest) => dest.copyWith(
+                      employeeDataSummaryFields:
+                          current.employeeDataSummaryFields,
+                    ),
+                  )
+                : null,
+          ),
+          _buildListEditor(
+            context,
+            ref,
+            'Positions',
+            settings.positions,
+            (newItems) {
+              ref
+                  .read(firestoreServiceProvider)
+                  .updateStoreSettingsForSpecificStore(
+                    storeId,
+                    settings.copyWith(positions: newItems),
+                  );
+            },
+            copyButton: positionsDiffer
+                ? buildCopyButton(
+                    'Positions',
+                    (current, dest) =>
+                        dest.copyWith(positions: current.positions),
+                  )
+                : null,
+          ),
+          _buildListEditor(
+            context,
+            ref,
+            'Working Times',
+            settings.workingTimes,
+            (newItems) {
+              ref
+                  .read(firestoreServiceProvider)
+                  .updateStoreSettingsForSpecificStore(
+                    storeId,
+                    settings.copyWith(workingTimes: newItems),
+                  );
+            },
+            copyButton: workingTimesDiffer
+                ? buildCopyButton(
+                    'Working Times',
+                    (current, dest) =>
+                        dest.copyWith(workingTimes: current.workingTimes),
+                  )
+                : null,
+          ),
+          _buildListEditor(
+            context,
+            ref,
+            'Designations',
+            settings.designations,
+            (newItems) {
+              ref
+                  .read(firestoreServiceProvider)
+                  .updateStoreSettingsForSpecificStore(
+                    storeId,
+                    settings.copyWith(designations: newItems),
+                  );
+            },
+            copyButton: designationsDiffer
+                ? buildCopyButton(
+                    'Designations',
+                    (current, dest) =>
+                        dest.copyWith(designations: current.designations),
+                  )
+                : null,
+          ),
+          SettingsTakeoutCard(storeId: storeId),
         ];
       },
-      loading: () => const [SizedBox(height: 200, child: Center(child: CircularProgressIndicator()))],
-      error: (e, st) => [SizedBox(height: 200, child: Center(child: Text('Error: $e')))],
+      loading: () => const [
+        SizedBox(
+          height: 200,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ],
+      error: (e, st) => [
+        SizedBox(height: 200, child: Center(child: Text('Error: $e'))),
+      ],
     );
   }
 
-  void _showCopyDialog(BuildContext context, WidgetRef ref, String sourceStoreId, String fieldName, List<Map<String, dynamic>> allStores, StoreSettingsModel sourceSettings, StoreSettingsModel Function(StoreSettingsModel, StoreSettingsModel) updateFn) {
-    final otherStores = allStores.where((s) => s['id'] != sourceStoreId).toList();
+  void _showCopyDialog(
+    BuildContext context,
+    WidgetRef ref,
+    String sourceStoreId,
+    String fieldName,
+    List<Map<String, dynamic>> allStores,
+    StoreSettingsModel sourceSettings,
+    StoreSettingsModel Function(StoreSettingsModel, StoreSettingsModel)
+    updateFn,
+  ) {
+    final otherStores = allStores
+        .where((s) => s['id'] != sourceStoreId)
+        .toList();
     final selectedStores = <String>{};
 
     showDialog(
@@ -243,7 +413,12 @@ class SettingsView extends ConsumerWidget {
           builder: (context, setDialogState) {
             return AlertDialog(
               backgroundColor: Theme.of(context).cardColor,
-              title: Text('Copy $fieldName settings to other stores?', style: TextStyle(color: Theme.of(context).textTheme.titleLarge?.color)),
+              title: Text(
+                'Copy $fieldName settings to other stores?',
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.titleLarge?.color,
+                ),
+              ),
               content: SizedBox(
                 width: 300,
                 child: Column(
@@ -251,7 +426,12 @@ class SettingsView extends ConsumerWidget {
                   children: otherStores.map((store) {
                     final sid = store['id'] as String;
                     return CheckboxListTile(
-                      title: Text('${store['name']}', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+                      title: Text(
+                        '${store['name']}',
+                        style: TextStyle(
+                          color: Theme.of(context).textTheme.bodyLarge?.color,
+                        ),
+                      ),
                       value: selectedStores.contains(sid),
                       onChanged: (val) {
                         setDialogState(() {
@@ -272,18 +452,39 @@ class SettingsView extends ConsumerWidget {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: selectedStores.isEmpty ? null : () {
-                    for (final sid in selectedStores) {
-                      final destSettings = ref.read(specificStoreSettingsProvider(sid)).valueOrNull;
-                      if (destSettings != null) {
-                        final newSettings = updateFn(sourceSettings, destSettings);
-                        ref.read(firestoreServiceProvider).updateStoreSettingsForSpecificStore(sid, newSettings);
-                      }
-                    }
-                    Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied $fieldName to ${selectedStores.length} store(s)')));
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary, foregroundColor: Colors.white),
+                  onPressed: selectedStores.isEmpty
+                      ? null
+                      : () {
+                          for (final sid in selectedStores) {
+                            final destSettings = ref
+                                .read(specificStoreSettingsProvider(sid))
+                                .valueOrNull;
+                            if (destSettings != null) {
+                              final newSettings = updateFn(
+                                sourceSettings,
+                                destSettings,
+                              );
+                              ref
+                                  .read(firestoreServiceProvider)
+                                  .updateStoreSettingsForSpecificStore(
+                                    sid,
+                                    newSettings,
+                                  );
+                            }
+                          }
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Copied $fieldName to ${selectedStores.length} store(s)',
+                              ),
+                            ),
+                          );
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.white,
+                  ),
                   child: const Text('Copy'),
                 ),
               ],
@@ -294,7 +495,14 @@ class SettingsView extends ConsumerWidget {
     );
   }
 
-  Widget _buildListEditor(BuildContext context, WidgetRef ref, String title, List<String> items, Function(List<String>) onChanged, {Widget? copyButton}) {
+  Widget _buildListEditor(
+    BuildContext context,
+    WidgetRef ref,
+    String title,
+    List<String> items,
+    Function(List<String>) onChanged, {
+    Widget? copyButton,
+  }) {
     return Card(
       color: Theme.of(context).cardColor,
       shape: RoundedRectangleBorder(
@@ -311,7 +519,17 @@ class SettingsView extends ConsumerWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).textTheme.bodyLarge?.color,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                     IconButton(
                       icon: Icon(Icons.add_circle, color: AppTheme.accent),
                       onPressed: () {
@@ -336,7 +554,9 @@ class SettingsView extends ConsumerWidget {
                         onChanged(newItems);
                       },
                       deleteIconColor: AppTheme.primaryRed,
-                      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).scaffoldBackgroundColor,
                       side: BorderSide(color: Theme.of(context).dividerColor),
                     );
                   }).toList(),
@@ -346,27 +566,34 @@ class SettingsView extends ConsumerWidget {
             ),
           ),
           if (copyButton != null)
-            Positioned(
-              bottom: 0,
-              right: 0,
-              child: copyButton,
-            ),
+            Positioned(bottom: 0, right: 0, child: copyButton),
         ],
       ),
     );
   }
 
-  void _showAddItemDialog(BuildContext context, String title, Function(String) onAdd) {
+  void _showAddItemDialog(
+    BuildContext context,
+    String title,
+    Function(String) onAdd,
+  ) {
     final controller = TextEditingController();
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: Theme.of(context).cardColor,
-          title: Text('Add to $title', style: TextStyle(color: Theme.of(context).textTheme.titleLarge?.color)),
+          title: Text(
+            'Add to $title',
+            style: TextStyle(
+              color: Theme.of(context).textTheme.titleLarge?.color,
+            ),
+          ),
           content: TextField(
             controller: controller,
-            style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+            style: TextStyle(
+              color: Theme.of(context).textTheme.bodyLarge?.color,
+            ),
             decoration: const InputDecoration(
               hintText: 'Enter value',
               border: OutlineInputBorder(),
@@ -382,7 +609,10 @@ class SettingsView extends ConsumerWidget {
                 onAdd(controller.text.trim());
                 Navigator.of(context).pop();
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary, foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
+              ),
               child: const Text('Add'),
             ),
           ],
@@ -390,7 +620,6 @@ class SettingsView extends ConsumerWidget {
       },
     );
   }
-
 }
 
 class _StoreHeadersDelegate extends SliverPersistentHeaderDelegate {
@@ -399,7 +628,11 @@ class _StoreHeadersDelegate extends SliverPersistentHeaderDelegate {
   _StoreHeadersDelegate(this.stores);
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
     return Container(
       color: Theme.of(context).scaffoldBackgroundColor,
       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -411,14 +644,18 @@ class _StoreHeadersDelegate extends SliverPersistentHeaderDelegate {
             for (final store in stores)
               Container(
                 alignment: Alignment.center,
-                child: Text(
-                  '${store['name']}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).textTheme.bodyLarge?.color,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '${store['name']}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                    ),
                   ),
                 ),
               ),
@@ -435,5 +672,97 @@ class _StoreHeadersDelegate extends SliverPersistentHeaderDelegate {
   double get minExtent => 100.0;
 
   @override
-  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) => true;
+  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) =>
+      true;
+}
+
+class _AllStoresSettingsView extends StatefulWidget {
+  final List<Map<String, dynamic>> visibleStores;
+  final Widget content;
+
+  const _AllStoresSettingsView({
+    required this.visibleStores,
+    required this.content,
+  });
+
+  @override
+  State<_AllStoresSettingsView> createState() => _AllStoresSettingsViewState();
+}
+
+class _AllStoresSettingsViewState extends State<_AllStoresSettingsView> {
+  final ScrollController _hController = ScrollController();
+  final ScrollController _vController = ScrollController();
+
+  @override
+  void dispose() {
+    _hController.dispose();
+    _vController.dispose();
+    super.dispose();
+  }
+
+  void _moveBy(ScrollController c, double delta) {
+    if (!c.hasClients || delta == 0) return;
+    final p = c.position;
+    final to = (p.pixels + delta).clamp(p.minScrollExtent, p.maxScrollExtent);
+    if (to != p.pixels) c.jumpTo(to);
+  }
+
+  void _onPointerSignal(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent) return;
+    if (e.scrollDelta.dx != 0) {
+      _moveBy(_hController, e.scrollDelta.dx);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final minStoreWidth = 460.0;
+        final totalNeeded = widget.visibleStores.length * minStoreWidth +
+            (widget.visibleStores.length - 1) * 16.0 +
+            48.0;
+        final width = math.max(constraints.maxWidth, totalNeeded);
+
+        return Listener(
+          onPointerSignal: _onPointerSignal,
+          child: Scrollbar(
+            controller: _vController,
+            thumbVisibility: true,
+            notificationPredicate: (n) => n.metrics.axis == Axis.vertical,
+            child: Scrollbar(
+              controller: _hController,
+              thumbVisibility: true,
+              notificationPredicate: (n) =>
+                  n.depth == 0 && n.metrics.axis == Axis.horizontal,
+              child: SingleChildScrollView(
+                controller: _hController,
+                scrollDirection: Axis.horizontal,
+                physics: const ClampingScrollPhysics(),
+                child: SizedBox(
+                  width: width,
+                  child: CustomScrollView(
+                    controller: _vController,
+                    physics: const ClampingScrollPhysics(),
+                    slivers: [
+                      SliverPersistentHeader(
+                        pinned: true,
+                        delegate: _StoreHeadersDelegate(widget.visibleStores),
+                      ),
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                        sliver: SliverToBoxAdapter(
+                          child: widget.content,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

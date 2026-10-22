@@ -12,10 +12,12 @@ class SettingsManageOpsUsersCard extends StatefulWidget {
   const SettingsManageOpsUsersCard({super.key, required this.storeId});
 
   @override
-  State<SettingsManageOpsUsersCard> createState() => _SettingsManageOpsUsersCardState();
+  State<SettingsManageOpsUsersCard> createState() =>
+      _SettingsManageOpsUsersCardState();
 }
 
-class _SettingsManageOpsUsersCardState extends State<SettingsManageOpsUsersCard> {
+class _SettingsManageOpsUsersCardState
+    extends State<SettingsManageOpsUsersCard> {
   final _emailController = TextEditingController();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -25,28 +27,36 @@ class _SettingsManageOpsUsersCardState extends State<SettingsManageOpsUsersCard>
     final email = _emailController.text.trim();
     final first = _firstNameController.text.trim();
     final last = _lastNameController.text.trim();
-    
+
     if (email.isEmpty || first.isEmpty || last.isEmpty) return;
 
     setState(() => _isLoading = true);
 
     try {
-      const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      const chars =
+          'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
       final rnd = Random();
-      final tempPassword = String.fromCharCodes(Iterable.generate(8, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
-      
+      final tempPassword = String.fromCharCodes(
+        Iterable.generate(
+          8,
+          (_) => chars.codeUnitAt(rnd.nextInt(chars.length)),
+        ),
+      );
+
       FirebaseApp secondaryApp = await Firebase.initializeApp(
         name: 'Secondary_${DateTime.now().millisecondsSinceEpoch}',
         options: DefaultFirebaseOptions.currentPlatform,
       );
       String uid = '';
       try {
-         final userCredential = await FirebaseAuth.instanceFor(app: secondaryApp).createUserWithEmailAndPassword(email: email, password: tempPassword);
-         uid = userCredential.user!.uid;
+        final userCredential = await FirebaseAuth.instanceFor(
+          app: secondaryApp,
+        ).createUserWithEmailAndPassword(email: email, password: tempPassword);
+        uid = userCredential.user!.uid;
       } finally {
-         await secondaryApp.delete();
+        await secondaryApp.delete();
       }
-      
+
       // We create them in the global users collection so they can log in.
       // But we DO NOT add them to /stores/{storeId}/users.
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
@@ -59,7 +69,11 @@ class _SettingsManageOpsUsersCardState extends State<SettingsManageOpsUsersCard>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ops user generated! Email: $email | Password: $tempPassword. (Simulated sending email)')),
+          SnackBar(
+            content: Text(
+              'Ops user generated! Email: $email | Password: $tempPassword. (Simulated sending email)',
+            ),
+          ),
         );
         _emailController.clear();
         _firstNameController.clear();
@@ -67,7 +81,9 @@ class _SettingsManageOpsUsersCardState extends State<SettingsManageOpsUsersCard>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error generating user: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error generating user: $e')));
       }
     } finally {
       if (mounted) {
@@ -89,16 +105,31 @@ class _SettingsManageOpsUsersCardState extends State<SettingsManageOpsUsersCard>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Generate Ops User', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
+            Text(
+              'Generate Ops User',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).textTheme.bodyLarge?.color,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text('These users can log in and view the Ops page for this store, but will not appear on the team roster.', style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color)),
+            Text(
+              'These users can log in and view the Ops page for this store, but will not appear on the team roster.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).textTheme.bodySmall?.color,
+              ),
+            ),
             const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _firstNameController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'First Name',
                       border: OutlineInputBorder(),
@@ -109,7 +140,9 @@ class _SettingsManageOpsUsersCardState extends State<SettingsManageOpsUsersCard>
                 Expanded(
                   child: TextField(
                     controller: _lastNameController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Last Name',
                       border: OutlineInputBorder(),
@@ -124,7 +157,9 @@ class _SettingsManageOpsUsersCardState extends State<SettingsManageOpsUsersCard>
                 Expanded(
                   child: TextField(
                     controller: _emailController,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Email Address',
                       border: OutlineInputBorder(),
@@ -136,8 +171,20 @@ class _SettingsManageOpsUsersCardState extends State<SettingsManageOpsUsersCard>
                   height: 50,
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _generateUser,
-                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accent, foregroundColor: Colors.white),
-                    child: _isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Send Email Invite'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accent,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text('Send Email Invite'),
                   ),
                 ),
               ],

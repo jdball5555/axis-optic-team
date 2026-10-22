@@ -15,5 +15,6 @@ abstract class EmployeeReviewModel with _$EmployeeReviewModel {
     String? notes,
   }) = _EmployeeReviewModel;
 
-  factory EmployeeReviewModel.fromJson(Map<String, dynamic> json) => _$EmployeeReviewModelFromJson(json);
+  factory EmployeeReviewModel.fromJson(Map<String, dynamic> json) =>
+      _$EmployeeReviewModelFromJson(json);
 }

@@ -17,24 +17,279 @@
 //    the sample week on THIS week's schedule (posted), and applies the
 //    templates to NEXT week with nobody on them, ready to build.
 
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/schedule_models.dart';
 import '../models/store_settings_model.dart';
+import '../models/title_journey.dart';
 import '../models/user_model.dart';
 import '../ui/views/schedule/position_ops.dart';
 import 'schedule_repository.dart';
+
+// =============================================================================
+// Names: everyone gets a new, random name each time the sample data is added
+// (the rest of each person stays the same), so seeding again, or seeding
+// another store, looks like a new team.
+// =============================================================================
+
+/// First names, with a short name some of them go by.
+const _firstNames = <(String, String?)>[
+  ('Aaliyah', null),
+  ('Abigail', null),
+  ('Adrian', null),
+  ('Aiden', null),
+  ('Alejandro', null),
+  ('Alexander', 'Alex'),
+  ('Alyssa', null),
+  ('Amara', null),
+  ('Andre', null),
+  ('Angela', null),
+  ('Anthony', 'Tony'),
+  ('Ariana', null),
+  ('Austin', null),
+  ('Avery', null),
+  ('Bailey', null),
+  ('Benjamin', 'Ben'),
+  ('Brandon', null),
+  ('Brianna', null),
+  ('Caleb', null),
+  ('Camila', null),
+  ('Carmen', null),
+  ('Carter', null),
+  ('Cecilia', null),
+  ('Chloe', null),
+  ('Christopher', 'Chris'),
+  ('Claire', null),
+  ('Cole', null),
+  ('Connor', null),
+  ('Daniela', 'Dani'),
+  ('Darius', null),
+  ('Delilah', null),
+  ('Destiny', null),
+  ('Diego', null),
+  ('Dominic', null),
+  ('Eduardo', null),
+  ('Elena', null),
+  ('Elijah', null),
+  ('Elizabeth', 'Liz'),
+  ('Emilia', null),
+  ('Emmanuel', null),
+  ('Erica', null),
+  ('Esperanza', null),
+  ('Ethan', null),
+  ('Evelyn', null),
+  ('Fatima', null),
+  ('Felix', null),
+  ('Gabriel', 'Gabe'),
+  ('Gabriela', null),
+  ('Gianna', null),
+  ('Grace', null),
+  ('Hannah', null),
+  ('Harper', null),
+  ('Hector', null),
+  ('Isabella', 'Bella'),
+  ('Isaiah', null),
+  ('Ivan', null),
+  ('Jacob', null),
+  ('Jada', null),
+  ('Jasmine', null),
+  ('Javier', null),
+  ('Jayden', null),
+  ('Jordan', null),
+  ('Josephine', 'Josie'),
+  ('Joshua', 'Josh'),
+  ('Julian', null),
+  ('Kaitlyn', null),
+  ('Kayla', null),
+  ('Keanu', null),
+  ('Kendall', null),
+  ('Khalil', null),
+  ('Kiara', null),
+  ('Landon', null),
+  ('Layla', null),
+  ('Leah', null),
+  ('Leonardo', 'Leo'),
+  ('Liam', null),
+  ('Lucas', null),
+  ('Luciana', null),
+  ('Mackenzie', null),
+  ('Madeline', 'Maddie'),
+  ('Malik', null),
+  ('Marco', null),
+  ('Mariana', null),
+  ('Marisol', null),
+  ('Mason', null),
+  ('Mateo', null),
+  ('Maya', null),
+  ('Micah', null),
+  ('Miguel', null),
+  ('Mila', null),
+  ('Naomi', null),
+  ('Natalia', null),
+  ('Nathaniel', 'Nate'),
+  ('Nicholas', 'Nick'),
+  ('Nina', null),
+  ('Noah', null),
+  ('Nora', null),
+  ('Olivia', null),
+  ('Omar', null),
+  ('Oscar', null),
+  ('Paige', null),
+  ('Parker', null),
+  ('Priya', null),
+  ('Quinn', null),
+  ('Rafael', null),
+  ('Reese', null),
+  ('Ricardo', null),
+  ('Riley', null),
+  ('Rosa', null),
+  ('Ruby', null),
+  ('Ryan', null),
+  ('Samantha', 'Sam'),
+  ('Santiago', null),
+  ('Savannah', null),
+  ('Sebastian', null),
+  ('Serena', null),
+  ('Sienna', null),
+  ('Sofia', null),
+  ('Stella', null),
+  ('Taylor', null),
+  ('Terrell', null),
+  ('Trinity', null),
+  ('Tyler', null),
+  ('Valentina', null),
+  ('Valeria', null),
+  ('Victoria', 'Tori'),
+  ('Vivian', null),
+  ('Wesley', null),
+  ('Xavier', null),
+  ('Yasmin', null),
+  ('Zachary', 'Zach'),
+  ('Zoe', null),
+];
+
+const _lastNames = <String>[
+  'Acosta',
+  'Adams',
+  'Aguilar',
+  'Alvarez',
+  'Anderson',
+  'Bailey',
+  'Baker',
+  'Banks',
+  'Barnes',
+  'Bell',
+  'Bennett',
+  'Brooks',
+  'Bryant',
+  'Butler',
+  'Campbell',
+  'Carter',
+  'Castillo',
+  'Chavez',
+  'Coleman',
+  'Collins',
+  'Cooper',
+  'Cruz',
+  'Delgado',
+  'Diaz',
+  'Edwards',
+  'Ellis',
+  'Espinoza',
+  'Evans',
+  'Fisher',
+  'Flores',
+  'Foster',
+  'Garza',
+  'Gibson',
+  'Gomez',
+  'Graham',
+  'Griffin',
+  'Guerrero',
+  'Hamilton',
+  'Harper',
+  'Hayes',
+  'Henderson',
+  'Hernandez',
+  'Holmes',
+  'Howard',
+  'Hughes',
+  'Jenkins',
+  'Jimenez',
+  'Jordan',
+  'Kelly',
+  'Kennedy',
+  'Kim',
+  'Le',
+  'Long',
+  'Mendez',
+  'Meyer',
+  'Miller',
+  'Mitchell',
+  'Moreno',
+  'Morgan',
+  'Murphy',
+  'Myers',
+  'Nguyen',
+  'Ortiz',
+  'Owens',
+  'Palmer',
+  'Patel',
+  'Perez',
+  'Perry',
+  'Peterson',
+  'Powell',
+  'Price',
+  'Ramirez',
+  'Ramos',
+  'Reed',
+  'Reyes',
+  'Reynolds',
+  'Rivera',
+  'Roberts',
+  'Robinson',
+  'Rojas',
+  'Russell',
+  'Salazar',
+  'Sanders',
+  'Santos',
+  'Shaw',
+  'Simmons',
+  'Soto',
+  'Spencer',
+  'Stewart',
+  'Sullivan',
+  'Torres',
+  'Tran',
+  'Tucker',
+  'Turner',
+  'Vargas',
+  'Vasquez',
+  'Wagner',
+  'Walker',
+  'Wallace',
+  'Ward',
+  'Warren',
+  'Washington',
+  'Watson',
+  'Wells',
+  'West',
+  'Wheeler',
+  'Williams',
+  'Wood',
+  'Wright',
+  'Young',
+];
 
 // =============================================================================
 // The team
 // =============================================================================
 
 class _Person {
-  final String id; // short key used in the sample week
-  final String first;
-  final String last;
-  final String? preferred;
+  final String id; // short key used in the sample week (names are random)
   final String title;
   final String designation;
   final List<String> tags;
@@ -51,10 +306,7 @@ class _Person {
   final int? startedDaysAgo;
 
   const _Person(
-    this.id,
-    this.first,
-    this.last, {
-    this.preferred,
+    this.id, {
     required this.title,
     required this.designation,
     this.tags = const [],
@@ -75,83 +327,632 @@ const _it = 'In Training';
 
 const _people = <_Person>[
   // --- In training ---------------------------------------------------------
-  _Person('p01', 'Avery', 'Adler', title: _it, designation: 'Adult', area: 'DT', time: 'Daytime', start: '2026-09-13', checklistDone: 4),
-  _Person('p02', 'Blake', 'Brooks', title: _it, designation: 'Adult', area: 'SVC', time: 'Daytime', start: '2026-10-14', checklistDone: 3),
-  _Person('p03', 'Cameron', 'Carver', title: _it, designation: 'High School', area: 'DT', time: 'Night', permit: '2027-10-09', start: '2026-09-22', checklistDone: 6),
-  _Person('p04', 'Dakota', 'Dalton', title: _it, designation: 'High School', area: 'SVC', time: 'Night', permit: '2028-10-08', start: '2026-09-15', checklistDone: 8),
-  _Person('p05', 'Emerson', 'Ellison', title: _it, designation: 'Adult', area: 'KT', time: 'Daytime', start: '2026-08-30', checklistComplete: true),
-  _Person('p06', 'Finley', 'Fischer', title: _it, designation: 'Adult', area: 'KT', time: 'Daytime', start: '2026-08-27', checklistComplete: true),
-  _Person('p07', 'Harper', 'Garland', title: _it, designation: 'College', area: 'SVC', time: 'Daytime', permit: '2028-06-06', start: '2026-08-16', checklistComplete: true),
-  _Person('p08', 'Jordan', 'Holloway', title: _it, designation: 'College', area: 'DT', time: 'Night', permit: '2028-08-26', start: '2026-08-21', checklistDone: 6),
-  _Person('p09', 'Kendall', 'Ingram', title: _it, designation: 'High School', area: 'SVC', time: 'Night', start: '2026-07-13', checklistDone: 8),
-  _Person('p10', 'Logan', 'Jansen', title: _it, designation: 'High School', area: 'SVC', time: 'Night', permit: '2028-08-03', start: '2026-05-03', checklistDone: 7),
+  _Person(
+    'p01',
+    title: _it,
+    designation: 'Adult',
+    area: 'DT',
+    time: 'Daytime',
+    start: '2026-09-20',
+    checklistDone: 4,
+  ),
+  _Person(
+    'p02',
+    title: _it,
+    designation: 'Adult',
+    area: 'SVC',
+    time: 'Daytime',
+    start: '2026-09-06',
+    checklistDone: 3,
+  ),
+  _Person(
+    'p03',
+    title: _it,
+    designation: 'High School',
+    area: 'DT',
+    time: 'Night',
+    permit: '2027-10-24',
+    start: '2026-10-07',
+    checklistDone: 6,
+  ),
+  _Person(
+    'p04',
+    title: _it,
+    designation: 'High School',
+    area: 'SVC',
+    time: 'Night',
+    permit: '2028-10-08',
+    start: '2026-09-15',
+    checklistDone: 8,
+  ),
+  _Person(
+    'p05',
+    title: _it,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Daytime',
+    start: '2026-09-03',
+    checklistComplete: true,
+  ),
+  _Person(
+    'p06',
+    title: _it,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Daytime',
+    start: '2026-08-30',
+    checklistComplete: true,
+  ),
+  _Person(
+    'p07',
+    title: _it,
+    designation: 'College',
+    area: 'SVC',
+    time: 'Daytime',
+    permit: '2028-06-12',
+    start: '2026-08-22',
+    checklistComplete: true,
+  ),
+  _Person(
+    'p08',
+    title: _it,
+    designation: 'College',
+    area: 'DT',
+    time: 'Night',
+    permit: '2028-08-05',
+    start: '2026-07-31',
+    checklistDone: 6,
+  ),
+  _Person(
+    'p09',
+    title: _it,
+    designation: 'High School',
+    area: 'SVC',
+    time: 'Night',
+    start: '2026-07-14',
+    checklistDone: 8,
+  ),
+  _Person(
+    'p10',
+    title: _it,
+    designation: 'High School',
+    area: 'SVC',
+    time: 'Night',
+    permit: '2028-09-02',
+    start: '2026-06-02',
+    checklistDone: 7,
+  ),
   // New hires with no shifts yet: the training flow picks them up.
-  _Person('p11', 'Morgan', 'Keller', title: _it, designation: 'High School', area: 'DT', time: 'Night', startedDaysAgo: 4, checklistDone: 1),
-  _Person('p12', 'Parker', 'Lowell', title: _it, designation: 'High School', area: 'SVC', time: 'Night', startedDaysAgo: 2, checklistDone: 0),
-  _Person('p13', 'Quinn', 'Mercer', title: _it, designation: 'Adult', area: 'KT', time: 'Daytime', startedDaysAgo: 3, checklistDone: 0),
+  _Person(
+    'p11',
+    title: _it,
+    designation: 'High School',
+    area: 'DT',
+    time: 'Night',
+    startedDaysAgo: 4,
+    checklistDone: 1,
+  ),
+  _Person(
+    'p12',
+    title: _it,
+    designation: 'High School',
+    area: 'SVC',
+    time: 'Night',
+    startedDaysAgo: 2,
+    checklistDone: 0,
+  ),
+  _Person(
+    'p13',
+    title: _it,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Daytime',
+    startedDaysAgo: 3,
+    checklistDone: 0,
+  ),
 
   // --- Team members -----------------------------------------------------------
-  _Person('p14', 'Reese', 'Norris', title: _tm, designation: 'Adult', area: 'DT', time: 'Daytime', permit: '2028-08-25', start: '2026-09-06'),
-  _Person('p15', 'Rowan', 'Oakes', title: _tm, designation: 'Adult', area: 'SVC', time: 'Daytime', permit: '2028-06-04', start: '2026-07-30'),
-  _Person('p16', 'Sawyer', 'Pryor', title: _tm, designation: 'High School', area: 'KT', time: 'Night', start: '2026-07-07'),
-  _Person('p17', 'Skyler', 'Quarles', title: _tm, designation: 'High School', area: 'SVC', time: 'Night', start: '2026-06-25'),
-  _Person('p18', 'Taylor', 'Rhodes', title: _tm, designation: 'High School', area: 'SVC', time: 'Night', permit: '2028-11-09', start: '2026-06-26'),
-  _Person('p19', 'Hayden', 'Sutton', title: _tm, designation: 'High School', area: 'SVC', time: 'Night', permit: '2028-09-14', start: '2026-04-22'),
-  _Person('p20', 'Peyton', 'Thorne', title: _tm, designation: 'Adult', area: 'KT', time: 'Night', permit: '2027-07-04', start: '2026-03-28'),
-  _Person('p21', 'Jamie', 'Upton', title: _tm, designation: 'College', area: 'DT', time: 'Night', permit: '2028-09-05', start: '2026-03-25', leaving: true),
-  _Person('p22', 'Drew', 'Vance', title: _tm, designation: 'Adult', area: 'KT', time: 'Daytime', permit: '2028-07-29', start: '2026-03-24'),
-  _Person('p23', 'Elliot', 'Whitaker', title: _tm, designation: 'Adult', area: 'DT', time: 'Daytime', start: '2026-02-27'),
-  _Person('p24', 'Frankie', 'Yates', title: _tm, designation: 'Adult', area: 'KT', time: 'Night', permit: '2028-02-22', start: '2026-02-03'),
-  _Person('p25', 'Greer', 'Zeller', title: _tm, designation: 'High School', area: 'DT', time: 'Night', permit: '2026-11-06', start: '2026-01-23'),
-  _Person('p26', 'Hollis', 'Ashby', title: _tm, designation: 'High School', area: 'DT', time: 'Night', permit: '2028-02-22', start: '2026-02-13'),
-  _Person('p27', 'Indigo', 'Barlow', title: _tm, designation: 'High School', tags: ['Trainer'], area: 'DT', time: 'Night', permit: '2028-01-17', start: '2026-01-07'),
-  _Person('p28', 'Jules', 'Crane', title: _tm, designation: 'High School', area: 'SVC', time: 'Night', permit: '2027-08-01', start: '2025-07-10'),
-  _Person('p29', 'Kai', 'Dunn', title: _tm, designation: 'Adult', tags: ['Truck'], area: 'DT', time: 'Daytime', permit: '2027-06-08', start: '2025-06-07'),
-  _Person('p30', 'Lane', 'Easton', title: _tm, designation: 'High School', area: 'SVC', time: 'Night', permit: '2027-06-15', start: '2025-06-07'),
-  _Person('p31', 'Marley', 'Fairley', title: _tm, designation: 'Adult', area: 'KT', time: 'Night', permit: '2027-07-13', start: '2025-05-10'),
-  _Person('p32', 'Noel', 'Gentry', title: _tm, designation: 'College', tags: ['Trainer'], area: 'DT', time: 'Daytime', permit: '2025-09-30', start: '2025-05-13'),
-  _Person('p33', 'Oakley', 'Hale', title: _tm, designation: 'Adult', area: 'KT', time: 'Night', permit: '2027-10-14', start: '2025-04-26'),
-  _Person('p34', 'Phoenix', 'Irwin', title: _tm, designation: 'High School', area: 'DT', time: 'Night', permit: '2027-03-01', start: '2025-02-22'),
-  _Person('p35', 'Remy', 'Joyner', title: _tm, designation: 'High School', area: 'DT', time: 'Night', permit: '2027-12-05', start: '2025-02-05'),
-  _Person('p36', 'Sage', 'Kemp', title: _tm, designation: 'College', tags: ['Trainer'], area: 'DT', time: 'Night', permit: '2026-12-27', start: '2024-11-19'),
-  _Person('p37', 'Tatum', 'Langley', title: _tm, designation: 'College', tags: ['Trainer'], area: 'DT', time: 'Night', permit: '2027-09-22', start: '2024-09-15'),
-  _Person('p38', 'Umi', 'Marsh', title: _tm, designation: 'College', area: 'DT', time: 'Night', permit: '2026-10-19', start: '2024-10-19'),
-  _Person('p39', 'Val', 'Nash', title: _tm, designation: 'High School', tags: ['Trainer'], area: 'DT', time: 'Night', permit: '2026-10-06', start: '2024-10-06'),
-  _Person('p40', 'Wren', 'Ortega', title: _tm, designation: 'Adult', area: 'KT', time: 'Night', start: '2024-10-21'),
-  _Person('p41', 'Arden', 'Pace', title: _tm, designation: 'College', area: 'DT', time: 'Night', permit: '2028-07-24', start: '2024-07-24'),
-  _Person('p42', 'Bellamy', 'Ridley', title: _tm, designation: 'College', area: 'SVC', time: 'Daytime', permit: '2026-03-22', start: '2024-03-20'),
-  _Person('p43', 'Corey', 'Stokes', title: _tm, designation: 'Adult', area: 'KT', time: 'Daytime', start: '2023-09-21'),
-  _Person('p44', 'Dallas', 'Tate', title: _tm, designation: 'College', tags: ['Trainer', 'Truck'], area: 'SVC', time: 'Daytime', permit: '2027-07-12', start: '2023-08-10'),
-  _Person('p45', 'Ellis', 'Underhill', title: _tm, designation: 'Adult', area: 'DT', time: 'Daytime', start: '2022-07-25'),
-  _Person('p46', 'Flynn', 'Voss', title: _tm, designation: 'Adult', area: 'SVC', time: 'Daytime', permit: '2027-08-11', start: '2022-05-20'),
-  _Person('p47', 'Gray', 'Wilder', title: _tm, designation: 'Adult', area: 'KT', time: 'Daytime', permit: '2030-03-29', start: '2022-02-01'),
-  _Person('p48', 'Haven', 'York', title: _tm, designation: 'Adult', area: 'SVC', time: 'Night', permit: '2026-08-21', start: '2021-09-14'),
-  _Person('p49', 'Iris', 'Ames', title: _tm, designation: 'Adult', area: 'KT', time: 'Night', permit: '2027-10-09', start: '2021-09-10'),
-  _Person('p50', 'Jessie', 'Bishop', title: _tm, designation: 'Adult', area: 'KT', time: 'Daytime', permit: '2027-07-31', start: '2017-10-17'),
+  _Person(
+    'p14',
+    title: _tm,
+    designation: 'Adult',
+    area: 'DT',
+    time: 'Daytime',
+    permit: '2028-07-29',
+    start: '2026-08-10',
+  ),
+  _Person(
+    'p15',
+    title: _tm,
+    designation: 'Adult',
+    area: 'SVC',
+    time: 'Daytime',
+    permit: '2028-06-10',
+    start: '2026-08-05',
+  ),
+  _Person(
+    'p16',
+    title: _tm,
+    designation: 'High School',
+    area: 'KT',
+    time: 'Night',
+    start: '2026-07-30',
+  ),
+  _Person(
+    'p17',
+    title: _tm,
+    designation: 'High School',
+    area: 'SVC',
+    time: 'Night',
+    start: '2026-07-01',
+  ),
+  _Person(
+    'p18',
+    title: _tm,
+    designation: 'High School',
+    area: 'SVC',
+    time: 'Night',
+    permit: '2028-11-02',
+    start: '2026-06-19',
+  ),
+  _Person(
+    'p19',
+    title: _tm,
+    designation: 'High School',
+    area: 'SVC',
+    time: 'Night',
+    permit: '2028-08-21',
+    start: '2026-03-29',
+  ),
+  _Person(
+    'p20',
+    title: _tm,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Night',
+    permit: '2027-07-27',
+    start: '2026-04-20',
+  ),
+  _Person(
+    'p21',
+    title: _tm,
+    designation: 'College',
+    area: 'DT',
+    time: 'Night',
+    permit: '2028-09-03',
+    start: '2026-03-23',
+    leaving: true,
+  ),
+  _Person(
+    'p22',
+    title: _tm,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Daytime',
+    permit: '2028-07-19',
+    start: '2026-03-14',
+  ),
+  _Person(
+    'p23',
+    title: _tm,
+    designation: 'Adult',
+    area: 'DT',
+    time: 'Daytime',
+    start: '2026-03-13',
+  ),
+  _Person(
+    'p24',
+    title: _tm,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Night',
+    permit: '2028-02-19',
+    start: '2026-01-31',
+  ),
+  _Person(
+    'p25',
+    title: _tm,
+    designation: 'High School',
+    area: 'DT',
+    time: 'Night',
+    permit: '2026-11-01',
+    start: '2026-01-18',
+  ),
+  _Person(
+    'p26',
+    title: _tm,
+    designation: 'High School',
+    area: 'DT',
+    time: 'Night',
+    permit: '2028-02-01',
+    start: '2026-01-23',
+  ),
+  _Person(
+    'p27',
+    title: _tm,
+    designation: 'High School',
+    tags: ['Trainer'],
+    area: 'DT',
+    time: 'Night',
+    permit: '2028-01-11',
+    start: '2026-01-01',
+  ),
+  _Person(
+    'p28',
+    title: _tm,
+    designation: 'High School',
+    area: 'SVC',
+    time: 'Night',
+    permit: '2027-08-03',
+    start: '2025-07-12',
+  ),
+  _Person(
+    'p29',
+    title: _tm,
+    designation: 'Adult',
+    tags: ['Truck'],
+    area: 'DT',
+    time: 'Daytime',
+    permit: '2027-07-04',
+    start: '2025-07-03',
+  ),
+  _Person(
+    'p30',
+    title: _tm,
+    designation: 'High School',
+    area: 'SVC',
+    time: 'Night',
+    permit: '2027-06-01',
+    start: '2025-05-24',
+  ),
+  _Person(
+    'p31',
+    title: _tm,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Night',
+    permit: '2027-08-07',
+    start: '2025-06-04',
+  ),
+  _Person(
+    'p32',
+    title: _tm,
+    designation: 'College',
+    tags: ['Trainer'],
+    area: 'DT',
+    time: 'Daytime',
+    permit: '2025-09-16',
+    start: '2025-04-29',
+  ),
+  _Person(
+    'p33',
+    title: _tm,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Night',
+    permit: '2027-10-10',
+    start: '2025-04-22',
+  ),
+  _Person(
+    'p34',
+    title: _tm,
+    designation: 'High School',
+    area: 'DT',
+    time: 'Night',
+    permit: '2027-03-22',
+    start: '2025-03-15',
+  ),
+  _Person(
+    'p35',
+    title: _tm,
+    designation: 'High School',
+    area: 'DT',
+    time: 'Night',
+    permit: '2027-11-15',
+    start: '2025-01-16',
+  ),
+  _Person(
+    'p36',
+    title: _tm,
+    designation: 'College',
+    tags: ['Trainer'],
+    area: 'DT',
+    time: 'Night',
+    permit: '2027-01-06',
+    start: '2024-11-29',
+  ),
+  _Person(
+    'p37',
+    title: _tm,
+    designation: 'College',
+    tags: ['Trainer'],
+    area: 'DT',
+    time: 'Night',
+    permit: '2027-08-30',
+    start: '2024-08-23',
+  ),
+  _Person(
+    'p38',
+    title: _tm,
+    designation: 'College',
+    area: 'DT',
+    time: 'Night',
+    permit: '2026-10-31',
+    start: '2024-10-31',
+  ),
+  _Person(
+    'p39',
+    title: _tm,
+    designation: 'High School',
+    tags: ['Trainer'],
+    area: 'DT',
+    time: 'Night',
+    permit: '2026-10-05',
+    start: '2024-10-05',
+  ),
+  _Person(
+    'p40',
+    title: _tm,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Night',
+    start: '2024-10-05',
+  ),
+  _Person(
+    'p41',
+    title: _tm,
+    designation: 'College',
+    area: 'DT',
+    time: 'Night',
+    permit: '2028-08-06',
+    start: '2024-08-06',
+  ),
+  _Person(
+    'p42',
+    title: _tm,
+    designation: 'College',
+    area: 'SVC',
+    time: 'Daytime',
+    permit: '2026-03-22',
+    start: '2024-03-20',
+  ),
+  _Person(
+    'p43',
+    title: _tm,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Daytime',
+    start: '2023-09-26',
+  ),
+  _Person(
+    'p44',
+    title: _tm,
+    designation: 'College',
+    tags: ['Trainer', 'Truck'],
+    area: 'SVC',
+    time: 'Daytime',
+    permit: '2027-07-13',
+    start: '2023-08-11',
+  ),
+  _Person(
+    'p45',
+    title: _tm,
+    designation: 'Adult',
+    area: 'DT',
+    time: 'Daytime',
+    start: '2022-08-03',
+  ),
+  _Person(
+    'p46',
+    title: _tm,
+    designation: 'Adult',
+    area: 'SVC',
+    time: 'Daytime',
+    permit: '2027-07-30',
+    start: '2022-05-08',
+  ),
+  _Person(
+    'p47',
+    title: _tm,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Daytime',
+    permit: '2030-03-13',
+    start: '2022-01-16',
+  ),
+  _Person(
+    'p48',
+    title: _tm,
+    designation: 'Adult',
+    area: 'SVC',
+    time: 'Night',
+    permit: '2026-08-24',
+    start: '2021-09-17',
+  ),
+  _Person(
+    'p49',
+    title: _tm,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Night',
+    permit: '2027-10-13',
+    start: '2021-09-14',
+  ),
+  _Person(
+    'p50',
+    title: _tm,
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Daytime',
+    permit: '2027-08-14',
+    start: '2017-10-31',
+  ),
 
   // --- Champions ----------------------------------------------------------------
-  _Person('p51', 'Kit', 'Colby', title: 'Champion', designation: 'High School', tags: ['Trainer'], area: 'DT', time: 'Night', permit: '2028-08-26', start: '2024-11-02'),
-  _Person('p52', 'Lennon', 'Darby', title: 'Champion', designation: 'Adult', tags: ['Trainer'], area: 'DT', time: 'Daytime', permit: '2026-12-12', start: '2021-08-15'),
+  _Person(
+    'p51',
+    title: 'Champion',
+    designation: 'High School',
+    tags: ['Trainer'],
+    area: 'DT',
+    time: 'Night',
+    permit: '2028-08-15',
+    start: '2024-10-22',
+  ),
+  _Person(
+    'p52',
+    title: 'Champion',
+    designation: 'Adult',
+    tags: ['Trainer'],
+    area: 'DT',
+    time: 'Daytime',
+    permit: '2027-01-04',
+    start: '2021-09-07',
+  ),
 
   // --- Seasonal (away at school: no availability) ----------------------------------
-  _Person('p53', 'Milan', 'Emory', title: 'Seasonal', designation: 'College', area: 'SVC', time: 'Daytime', permit: '2026-12-04', start: '2024-11-25'),
-  _Person('p54', 'Nico', 'Frost', title: 'Seasonal', designation: 'College', tags: ['Trainer'], area: 'DT', time: 'Daytime', permit: '2026-03-11', start: '2024-03-07'),
-  _Person('p55', 'Onyx', 'Greene', title: 'Seasonal', designation: 'College', area: 'DT', time: 'Daytime', start: '2024-02-06'),
-  _Person('p56', 'Presley', 'Hollis', title: 'Seasonal', designation: 'College', tags: ['Trainer'], area: 'SVC', time: 'Daytime', start: '2021-07-05'),
+  _Person(
+    'p53',
+    title: 'Seasonal',
+    designation: 'College',
+    area: 'SVC',
+    time: 'Daytime',
+    permit: '2026-11-09',
+    start: '2024-10-31',
+  ),
+  _Person(
+    'p54',
+    title: 'Seasonal',
+    designation: 'College',
+    tags: ['Trainer'],
+    area: 'DT',
+    time: 'Daytime',
+    permit: '2026-03-25',
+    start: '2024-03-21',
+  ),
+  _Person(
+    'p55',
+    title: 'Seasonal',
+    designation: 'College',
+    area: 'DT',
+    time: 'Daytime',
+    start: '2024-02-12',
+  ),
+  _Person(
+    'p56',
+    title: 'Seasonal',
+    designation: 'College',
+    tags: ['Trainer'],
+    area: 'SVC',
+    time: 'Daytime',
+    start: '2021-06-06',
+  ),
 
   // --- Leaders --------------------------------------------------------------------
-  _Person('p57', 'Raleigh', 'Ives', title: 'Leader', designation: 'Adult', tags: ['Driver'], area: 'SVC', time: 'Daytime', start: '2026-01-27'),
-  _Person('p58', 'Shiloh', 'Judd', title: 'Leader', designation: 'Adult', area: 'KT', time: 'Daytime', permit: '2030-02-20', mgrPermit: '2030-02-23', start: '2023-06-24'),
-  _Person('p59', 'Toby', 'Kerr', title: 'Leader', designation: 'Adult', tags: ['Driver'], area: 'SVC', time: 'Night', start: '2023-04-20'),
-  _Person('p60', 'Vesper', 'Lake', preferred: 'Nico', title: 'Leader', designation: 'College', tags: ['Driver'], area: 'DT', time: 'Night', permit: '2027-04-13', mgrPermit: '2028-01-30', start: '2022-04-16'),
-  _Person('p61', 'Winter', 'Moss', title: 'Leader', designation: 'Adult', area: 'KT', time: 'Daytime', permit: '2030-02-25', mgrPermit: '2030-03-13', start: '2021-08-15'),
-  _Person('p62', 'Yael', 'North', title: 'Leader', designation: 'Adult', area: 'KT', time: 'Night', permit: '2030-02-23', mgrPermit: '2030-03-10', start: '2013-08-18'),
-  _Person('p63', 'Zuri', 'Orr', title: 'Leader', designation: 'Adult', area: 'DT', time: 'Daytime', permit: '2026-12-13', mgrPermit: '2026-12-10', start: '2013-02-08'),
+  _Person(
+    'p57',
+    title: 'Leader',
+    designation: 'Adult',
+    tags: ['Driver'],
+    area: 'SVC',
+    time: 'Daytime',
+    start: '2026-02-25',
+  ),
+  _Person(
+    'p58',
+    title: 'Leader',
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Daytime',
+    permit: '2030-02-12',
+    mgrPermit: '2030-02-23',
+    start: '2023-06-16',
+  ),
+  _Person(
+    'p59',
+    title: 'Leader',
+    designation: 'Adult',
+    tags: ['Driver'],
+    area: 'SVC',
+    time: 'Night',
+    start: '2023-04-08',
+  ),
+  _Person(
+    'p60',
+    title: 'Leader',
+    designation: 'College',
+    tags: ['Driver'],
+    area: 'DT',
+    time: 'Night',
+    permit: '2027-04-26',
+    mgrPermit: '2028-01-30',
+    start: '2022-04-29',
+  ),
+  _Person(
+    'p61',
+    title: 'Leader',
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Daytime',
+    permit: '2030-03-09',
+    mgrPermit: '2030-03-13',
+    start: '2021-08-27',
+  ),
+  _Person(
+    'p62',
+    title: 'Leader',
+    designation: 'Adult',
+    area: 'KT',
+    time: 'Night',
+    permit: '2030-02-22',
+    mgrPermit: '2030-03-10',
+    start: '2013-08-17',
+  ),
+  _Person(
+    'p63',
+    title: 'Leader',
+    designation: 'Adult',
+    area: 'DT',
+    time: 'Daytime',
+    permit: '2026-11-25',
+    mgrPermit: '2026-12-10',
+    start: '2013-01-21',
+  ),
 
   // --- Directors ------------------------------------------------------------------
-  _Person('p64', 'Ash', 'Penn', title: 'Director', designation: 'Adult', tags: ['Driver'], area: 'DIR', time: 'Daytime', permit: '2028-08-13', mgrPermit: '2028-08-07', start: '2022-10-19'),
-  _Person('p65', 'Brook', 'Reed', title: 'Director', designation: 'Adult', tags: ['Driver'], area: 'DIR', time: 'Daytime', permit: '2028-08-07', mgrPermit: '2028-07-17', start: '2016-10-06'),
-  _Person('p66', 'Charlie', 'Shaw', title: 'Director', designation: 'Adult', tags: ['Driver'], area: 'DIR', time: 'Daytime', permit: '2030-03-15', mgrPermit: '2030-03-07', start: '2012-03-22'),
+  _Person(
+    'p64',
+    title: 'Director',
+    designation: 'Adult',
+    tags: ['Driver'],
+    area: 'DIR',
+    time: 'Daytime',
+    permit: '2028-08-10',
+    mgrPermit: '2028-08-07',
+    start: '2022-10-16',
+  ),
+  _Person(
+    'p65',
+    title: 'Director',
+    designation: 'Adult',
+    tags: ['Driver'],
+    area: 'DIR',
+    time: 'Daytime',
+    permit: '2028-07-23',
+    mgrPermit: '2028-07-17',
+    start: '2016-09-21',
+  ),
+  _Person(
+    'p66',
+    title: 'Director',
+    designation: 'Adult',
+    tags: ['Driver'],
+    area: 'DIR',
+    time: 'Daytime',
+    permit: '2030-03-28',
+    mgrPermit: '2030-03-07',
+    start: '2012-04-04',
+  ),
 ];
 
 // =============================================================================
@@ -530,12 +1331,30 @@ const _checklistItems = [
 ];
 
 const _titles = [
-  TitleConfig(id: 'title_in_training', name: _it, color: 'Orange', linkChecklist: true, linkedChecklistId: _checklistId),
+  TitleConfig(
+    id: 'title_in_training',
+    name: _it,
+    color: 'Orange',
+    linkChecklist: true,
+    linkedChecklistId: _checklistId,
+  ),
   TitleConfig(id: 'title_team_member', name: _tm, color: 'Red'),
   TitleConfig(id: 'title_seasonal', name: 'Seasonal', color: 'Green'),
   TitleConfig(id: 'title_champion', name: 'Champion', color: 'Teal'),
-  TitleConfig(id: 'title_leader', name: 'Leader', color: 'Blue', isLeadership: true, mgrPermit: true),
-  TitleConfig(id: 'title_director', name: 'Director', color: 'Purple', isLeadership: true, mgrPermit: true),
+  TitleConfig(
+    id: 'title_leader',
+    name: 'Leader',
+    color: 'Blue',
+    isLeadership: true,
+    mgrPermit: true,
+  ),
+  TitleConfig(
+    id: 'title_director',
+    name: 'Director',
+    color: 'Purple',
+    isLeadership: true,
+    mgrPermit: true,
+  ),
 ];
 
 const _tags = [
@@ -570,7 +1389,12 @@ List<_Block> _parseDay(String text) => [
       () {
         final parts = line.trim().split(RegExp(r'\s+'));
         final times = parts[1].split('-');
-        return _Block(parts[0], _minutes(times[0]), _minutes(times[1]), parts[2]);
+        return _Block(
+          parts[0],
+          _minutes(times[0]),
+          _minutes(times[1]),
+          parts[2],
+        );
       }(),
 ];
 
@@ -583,18 +1407,43 @@ class _BuiltDay {
 }
 
 class SampleSeeder {
-  SampleSeeder(this.storeId, {DateTime? today})
-    : today = dateOnly(today ?? DateTime.now());
+  SampleSeeder(this.storeId, {DateTime? today, math.Random? random})
+    : today = dateOnly(today ?? DateTime.now()),
+      _random = random ?? math.Random();
 
   final String storeId;
   final DateTime today;
+  final math.Random _random;
+
+  /// This seeding's name for each person (by key): a different first and
+  /// last name for everyone; now and then the short name they go by.
+  late final Map<String, ({String first, String last, String? preferred})>
+  _names = () {
+    final firsts = [..._firstNames]..shuffle(_random);
+    final lasts = [..._lastNames]..shuffle(_random);
+    return {
+      for (var i = 0; i < _people.length; i++)
+        _people[i].id: (
+          first: firsts[i].$1,
+          last: lasts[i],
+          preferred: firsts[i].$2 != null && _random.nextBool()
+              ? firsts[i].$2
+              : null,
+        ),
+    };
+  }();
   late final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   late final Map<String, _Person> _byId = {for (final p in _people) p.id: p};
   late final List<List<_Block>> _week = _sampleWeek.map(_parseDay).toList();
 
-  static String memberId(String key) => 'seed_$key';
-  static String loginId(String key) => 'seed_login_$key';
+  /// A team member's id: per store, so two seeded stores don't share ids
+  /// (the All Stores lists would merge them into one person).
+  String memberId(String key) => 'seed_${storeId}_$key';
+
+  /// A fake login's id: per store, so seeding several stores doesn't make
+  /// them share (and steal) each other's logins.
+  String loginId(String key) => 'seed_login_${storeId}_$key';
 
   DocumentReference<Map<String, dynamic>> get _store =>
       _db.collection('stores').doc(storeId);
@@ -631,9 +1480,14 @@ class SampleSeeder {
     return switch (bar) {
       _Bar.lead => ScheduleRow(id: id, allowedTitles: _leaderTitles),
       _Bar.host => ScheduleRow(id: id, label: 'Dining Room Host'),
-      _Bar.truck => board == kMainBoardId
-          ? ScheduleRow(id: id, label: 'Truck', allowedTitles: const ['Truck'])
-          : ScheduleRow(id: id, label: 'Truck'),
+      _Bar.truck =>
+        board == kMainBoardId
+            ? ScheduleRow(
+                id: id,
+                label: 'Truck',
+                allowedTitles: const ['Truck'],
+              )
+            : ScheduleRow(id: id, label: 'Truck'),
       _Bar.admin => ScheduleRow(id: id, label: 'Admin'),
       _Bar.prep => ScheduleRow(id: id, label: 'Prep'),
       _Bar.front || _Bar.kitchen => ScheduleRow(id: id),
@@ -655,7 +1509,8 @@ class SampleSeeder {
         .toList();
 
     // A person's back-to-back blocks of the same bar kind are one bar.
-    final bars = <({String who, int start, int end, _Bar bar, bool training})>[];
+    final bars =
+        <({String who, int start, int end, _Bar bar, bool training})>[];
     final byPerson = <String, List<_Block>>{};
     for (final b in working) {
       (byPerson[b.who] ??= []).add(b);
@@ -832,7 +1687,8 @@ class SampleSeeder {
     return out;
   }();
 
-  static int _hash(String s) => s.codeUnits.fold(7, (a, c) => (a * 31 + c) & 0x7fffffff);
+  static int _hash(String s) =>
+      s.codeUnits.fold(7, (a, c) => (a * 31 + c) & 0x7fffffff);
 
   static String _hhmm(int m) =>
       '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
@@ -840,7 +1696,15 @@ class SampleSeeder {
   /// Made-up availability that fits who they are (school, daytime / night)
   /// and always covers the shifts they have in the sample week.
   Map<String, List<Map<String, String>>> _availability(_Person p) {
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const days = [
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+      'sunday',
+    ];
     final h = _hash(p.id);
     final out = <String, List<Map<String, String>>>{};
     if (p.title == 'Seasonal') {
@@ -869,7 +1733,10 @@ class SampleSeeder {
           }
           // Daytime college: classes in the middle of Tue/Thu.
           return tueThu
-              ? const [TimeWindow(5 * 60, 10 * 60), TimeWindow(15 * 60 + 30, 23 * 60)]
+              ? const [
+                  TimeWindow(5 * 60, 10 * 60),
+                  TimeWindow(15 * 60 + 30, 23 * 60),
+                ]
               : const [TimeWindow(5 * 60, 16 * 60)];
         default: // Adult
           return p.time == 'Night'
@@ -881,7 +1748,10 @@ class SampleSeeder {
     // One or two days off a week (never a day they work in the sample week).
     final offDays = <int>{};
     if (!_leaderTitles.contains(p.title)) {
-      final free = [for (var d = 0; d < 6; d++) if (!worked.containsKey(d)) d];
+      final free = [
+        for (var d = 0; d < 6; d++)
+          if (!worked.containsKey(d)) d,
+      ];
       final want = p.designation == 'High School' ? 2 : 1;
       for (var k = 0; k < want && free.isNotEmpty; k++) {
         offDays.add(free.removeAt((h >> (k * 3)) % free.length));
@@ -932,8 +1802,9 @@ class SampleSeeder {
 
   String _email(_Person p) {
     String clean(String s) => s.toLowerCase().replaceAll(RegExp('[^a-z]'), '');
-    final first = clean(p.preferred ?? p.first);
-    final last = clean(p.last);
+    final n = _names[p.id]!;
+    final first = clean(n.preferred ?? n.first);
+    final last = clean(n.last);
     return '$first.$last@example.com';
   }
 
@@ -951,9 +1822,9 @@ class SampleSeeder {
             _ => 5,
           };
     final user = UserModel(
-      firstName: p.first,
-      lastName: p.last,
-      preferredName: p.preferred,
+      firstName: _names[p.id]!.first,
+      lastName: _names[p.id]!.last,
+      preferredName: _names[p.id]!.preferred,
       email: _email(p),
       title: p.title,
       startDate: _startDate(p),
@@ -965,14 +1836,19 @@ class SampleSeeder {
       workingTime: p.time,
       avgShifts: p.title == 'Seasonal' ? '0' : '$avg',
       payRate: _payRate(p),
-      foodHandlersExpiration: p.permit == null ? null : DateTime.parse(p.permit!),
-      managerPermitExpiration:
-          p.mgrPermit == null ? null : DateTime.parse(p.mgrPermit!),
+      foodHandlersExpiration: p.permit == null
+          ? null
+          : DateTime.parse(p.permit!),
+      managerPermitExpiration: p.mgrPermit == null
+          ? null
+          : DateTime.parse(p.mgrPermit!),
       status: 'Active',
       completedTasks: p.checklistDone == null
           ? const []
           : _checklistItems.take(p.checklistDone!).toList(),
-      completedChecklists: p.checklistComplete ? const [_checklistId] : const [],
+      completedChecklists: p.checklistComplete
+          ? const [_checklistId]
+          : const [],
       historyLogs: [
         {
           'timestamp': _startDate(p).toIso8601String(),
@@ -1020,15 +1896,47 @@ class SampleSeeder {
       req('p38', 1, 1, 'approved', 'Doctor appointment'),
       req('p26', 4, 5, 'approved', 'Homecoming weekend'),
       req('p33', 2, 2, 'approved', 'Family event'),
-      req('p45', 3, 3, 'approved', 'Dentist appointment', startTime: '06:00', endTime: '10:00'),
-      req('p36', 0, 0, 'approved', 'Evening lab class', startTime: '16:00', endTime: '23:00'),
+      req(
+        'p45',
+        3,
+        3,
+        'approved',
+        'Dentist appointment',
+        startTime: '06:00',
+        endTime: '10:00',
+      ),
+      req(
+        'p36',
+        0,
+        0,
+        'approved',
+        'Evening lab class',
+        startTime: '16:00',
+        endTime: '23:00',
+      ),
       req('p22', 5, 5, 'approved', 'Son\'s soccer tournament'),
       // Pending, next week
       req('p04', 5, 5, 'pending', 'Homecoming dance'),
-      req('p19', 4, 4, 'pending', 'Football game', startTime: '17:00', endTime: '23:00'),
+      req(
+        'p19',
+        4,
+        4,
+        'pending',
+        'Football game',
+        startTime: '17:00',
+        endTime: '23:00',
+      ),
       req('p05', 3, 3, 'pending', 'Appointment'),
       req('p35', 2, 3, 'pending', 'College visit'),
-      req('p02', 1, 1, 'pending', 'Car in the shop', startTime: '07:00', endTime: '11:00'),
+      req(
+        'p02',
+        1,
+        1,
+        'pending',
+        'Car in the shop',
+        startTime: '07:00',
+        endTime: '11:00',
+      ),
       // Denied
       req('p17', 5, 5, 'denied', 'Concert'),
       req('p16', 4, 4, 'denied', 'Trip with friends'),
@@ -1076,6 +1984,25 @@ class SampleSeeder {
       isShiftBoardEnabled: true,
     );
     await settingsRef.doc('global_config').set(settings.toJson());
+    // How people move up (Seasonal isn't a step on the way).
+    await saveTitleJourney(
+      storeId,
+      const TitleJourney(
+        nodes: {
+          'title_in_training': JourneyCell(0, 0),
+          'title_team_member': JourneyCell(1, 0),
+          'title_champion': JourneyCell(2, 0),
+          'title_leader': JourneyCell(3, 0),
+          'title_director': JourneyCell(4, 0),
+        },
+        links: [
+          JourneyLink('title_in_training', 'title_team_member'),
+          JourneyLink('title_team_member', 'title_champion'),
+          JourneyLink('title_champion', 'title_leader'),
+          JourneyLink('title_leader', 'title_director'),
+        ],
+      ),
+    );
 
     final repo = ScheduleRepository(storeId);
     // A shift board for each schedule, each with its own positions.
@@ -1137,8 +2064,8 @@ class SampleSeeder {
       );
       // A login linked to the member, like one made with "Create Account".
       await put(_db.collection('users').doc(loginId(p.id)), {
-        'first_name': p.first,
-        'last_name': p.last,
+        'first_name': _names[p.id]!.first,
+        'last_name': _names[p.id]!.last,
         'email': doc['email'],
         'role': 'team_member',
         'storeId': storeId,
@@ -1180,7 +2107,9 @@ class SampleSeeder {
     var templates = 0;
     for (final board in [kMainBoardId, kitchenBoardId]) {
       final boardRepo = ScheduleRepository(storeId, boardId: board);
-      final positions = board == kMainBoardId ? _frontPositions : _kitchenPositions;
+      final positions = board == kMainBoardId
+          ? _frontPositions
+          : _kitchenPositions;
       final prefix = board == kMainBoardId ? 'Front of House' : 'Kitchen';
       final thisWeek = <ScheduleDay>[];
       for (var d = 0; d < _week.length; d++) {
@@ -1215,8 +2144,7 @@ class SampleSeeder {
       await boardRepo.postWeek(weekStart, thisWeek, postedBy: 'seed');
     }
 
-    final weekLabel =
-        '${monthShort[nextWeek.month - 1]} ${nextWeek.day}';
+    final weekLabel = '${monthShort[nextWeek.month - 1]} ${nextWeek.day}';
     return 'Added ${_people.length} team members with logins, '
         '${timeOff.length} time off requests and $templates templates. '
         'This week is filled in and posted; the week of $weekLabel is ready '

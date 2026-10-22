@@ -12,7 +12,8 @@ abstract class ChecklistTask with _$ChecklistTask {
     String? notes,
   }) = _ChecklistTask;
 
-  factory ChecklistTask.fromJson(Map<String, dynamic> json) => _$ChecklistTaskFromJson(json);
+  factory ChecklistTask.fromJson(Map<String, dynamic> json) =>
+      _$ChecklistTaskFromJson(json);
 }
 
 @freezed
@@ -24,5 +25,6 @@ abstract class ChecklistTemplateModel with _$ChecklistTemplateModel {
     @Default([]) List<ChecklistTask> tasks,
   }) = _ChecklistTemplateModel;
 
-  factory ChecklistTemplateModel.fromJson(Map<String, dynamic> json) => _$ChecklistTemplateModelFromJson(json);
+  factory ChecklistTemplateModel.fromJson(Map<String, dynamic> json) =>
+      _$ChecklistTemplateModelFromJson(json);
 }

@@ -20,32 +20,55 @@ class SettingsManageHistoryLogsCard extends ConsumerWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final titleWidget = Text(
               'Manage History Logs',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: Theme.of(context).textTheme.bodyLarge?.color,
               ),
-            ),
-            ElevatedButton(
+            );
+            final viewButton = ElevatedButton(
               onPressed: () {
                 showDialog(
                   context: context,
-                  builder: (context) => _ManageHistoryLogsDialog(storeId: storeId),
+                  builder: (context) =>
+                      _ManageHistoryLogsDialog(storeId: storeId),
                 );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
               ),
               child: const Text('View Logs'),
-            ),
-          ],
+            );
+
+            if (constraints.maxWidth < 360) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  titleWidget,
+                  const SizedBox(height: 8),
+                  viewButton,
+                ],
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: titleWidget),
+                const SizedBox(width: 8),
+                viewButton,
+              ],
+            );
+          },
         ),
       ),
     );
@@ -57,10 +80,12 @@ class _ManageHistoryLogsDialog extends ConsumerStatefulWidget {
   const _ManageHistoryLogsDialog({required this.storeId});
 
   @override
-  ConsumerState<_ManageHistoryLogsDialog> createState() => _ManageHistoryLogsDialogState();
+  ConsumerState<_ManageHistoryLogsDialog> createState() =>
+      _ManageHistoryLogsDialogState();
 }
 
-class _ManageHistoryLogsDialogState extends ConsumerState<_ManageHistoryLogsDialog> {
+class _ManageHistoryLogsDialogState
+    extends ConsumerState<_ManageHistoryLogsDialog> {
   @override
   Widget build(BuildContext context) {
     // We can fetch all users globally and filter by store, since usersStreamProvider loads current store users
@@ -69,13 +94,18 @@ class _ManageHistoryLogsDialogState extends ConsumerState<_ManageHistoryLogsDial
 
     return AlertDialog(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      title: Text('Store History Logs', style: TextStyle(color: Theme.of(context).textTheme.titleLarge?.color)),
+      title: Text(
+        'Store History Logs',
+        style: TextStyle(color: Theme.of(context).textTheme.titleLarge?.color),
+      ),
       content: SizedBox(
         width: 600,
-        height: 500,
+        height: (MediaQuery.sizeOf(context).height - 120).clamp(200.0, 500.0),
         child: usersAsync.when(
           data: (users) {
-            final storeUsers = users.where((u) => u.store == widget.storeId).toList();
+            final storeUsers = users
+                .where((u) => u.store == widget.storeId)
+                .toList();
             // Aggregate all history logs
             final List<Map<String, dynamic>> allLogs = [];
             for (var user in storeUsers) {
@@ -92,13 +122,22 @@ class _ManageHistoryLogsDialogState extends ConsumerState<_ManageHistoryLogsDial
 
             // Sort by date descending
             allLogs.sort((a, b) {
-              final dateA = DateTime.tryParse(a['date'] ?? '') ?? DateTime(2000);
-              final dateB = DateTime.tryParse(b['date'] ?? '') ?? DateTime(2000);
+              final dateA =
+                  DateTime.tryParse(a['date'] ?? '') ?? DateTime(2000);
+              final dateB =
+                  DateTime.tryParse(b['date'] ?? '') ?? DateTime(2000);
               return dateB.compareTo(dateA);
             });
 
             if (allLogs.isEmpty) {
-              return Center(child: Text('No history logs found for this store.', style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color)));
+              return Center(
+                child: Text(
+                  'No history logs found for this store.',
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
+                ),
+              );
             }
 
             return ListView.separated(
@@ -110,13 +149,28 @@ class _ManageHistoryLogsDialogState extends ConsumerState<_ManageHistoryLogsDial
                 final Map<String, dynamic> log = item['log'];
                 final String date = item['date'];
                 final String event = log['event'] ?? 'Event';
-                final String userName = '${user.firstName ?? ''} ${user.lastName ?? ''}'.trim();
+                final String userName =
+                    '${user.firstName ?? ''} ${user.lastName ?? ''}'.trim();
 
                 return ListTile(
-                  title: Text(event, style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color)),
-                  subtitle: Text('$userName • $date', style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color)),
+                  title: Text(
+                    event,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '$userName • $date',
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
+                  ),
                   trailing: IconButton(
-                    icon: Icon(Icons.delete_outline, color: AppTheme.primaryRed),
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: AppTheme.primaryRed,
+                    ),
                     onPressed: () {
                       _confirmDelete(context, user, log);
                     },
@@ -126,26 +180,50 @@ class _ManageHistoryLogsDialogState extends ConsumerState<_ManageHistoryLogsDial
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, st) => Center(child: Text('Error loading logs: $e', style: TextStyle(color: AppTheme.primaryRed))),
+          error: (e, st) => Center(
+            child: Text(
+              'Error loading logs: $e',
+              style: TextStyle(color: AppTheme.primaryRed),
+            ),
+          ),
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text('Close', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+          child: Text(
+            'Close',
+            style: TextStyle(
+              color: Theme.of(context).textTheme.bodyLarge?.color,
+            ),
+          ),
         ),
       ],
     );
   }
 
-  void _confirmDelete(BuildContext context, UserModel user, Map<String, dynamic> logToRemove) {
+  void _confirmDelete(
+    BuildContext context,
+    UserModel user,
+    Map<String, dynamic> logToRemove,
+  ) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: Theme.of(context).cardColor,
-          title: Text('Delete History Log', style: TextStyle(color: Theme.of(context).textTheme.titleLarge?.color)),
-          content: Text('Are you sure you want to delete this log?\n\n"${logToRemove['event']}"', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color)),
+          title: Text(
+            'Delete History Log',
+            style: TextStyle(
+              color: Theme.of(context).textTheme.titleLarge?.color,
+            ),
+          ),
+          content: Text(
+            'Are you sure you want to delete this log?\n\n"${logToRemove['event']}"',
+            style: TextStyle(
+              color: Theme.of(context).textTheme.bodyLarge?.color,
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -154,13 +232,21 @@ class _ManageHistoryLogsDialogState extends ConsumerState<_ManageHistoryLogsDial
             ElevatedButton(
               onPressed: () async {
                 Navigator.of(context).pop(); // Close confirmation
-                
-                final newLogs = List<Map<String, dynamic>>.from(user.historyLogs ?? []);
+
+                final newLogs = List<Map<String, dynamic>>.from(
+                  user.historyLogs ?? [],
+                );
                 // Remove the exact matching log by properties (since it might be an unmodifiable map from freeze)
-                newLogs.removeWhere((l) => l['event'] == logToRemove['event'] && l['date'] == logToRemove['date']);
-                
+                newLogs.removeWhere(
+                  (l) =>
+                      l['event'] == logToRemove['event'] &&
+                      l['date'] == logToRemove['date'],
+                );
+
                 final updatedUser = user.copyWith(historyLogs: newLogs);
-                await ref.read(firestoreServiceProvider).updateUser(updatedUser);
+                await ref
+                    .read(firestoreServiceProvider)
+                    .updateUser(updatedUser);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryRed,

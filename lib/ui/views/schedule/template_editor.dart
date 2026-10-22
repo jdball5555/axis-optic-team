@@ -89,7 +89,9 @@ class _TemplateManagerState extends ConsumerState<_TemplateManager> {
 
   /// Older templates may have bars that touch; show them as one.
   ScheduleTemplate? _normalized(ScheduleTemplate? t) => t?.copyWith(
-    rows: [for (final r in t.rows) r.copyWith(windows: mergeWindows(r.windows))],
+    rows: [
+      for (final r in t.rows) r.copyWith(windows: mergeWindows(r.windows)),
+    ],
   );
 
   List<String> _storesOf(ScheduleTemplate? t) => t == null
@@ -138,7 +140,9 @@ class _TemplateManagerState extends ConsumerState<_TemplateManager> {
         _draft = leftThisStore ? null : toSave;
       });
       if (leftThisStore) {
-        _snack('Saved. It\'s no longer shared with this store, so it\'s hidden here.');
+        _snack(
+          'Saved. It\'s no longer shared with this store, so it\'s hidden here.',
+        );
       }
       return true;
     } catch (e) {
@@ -194,7 +198,9 @@ class _TemplateManagerState extends ConsumerState<_TemplateManager> {
   /// Saves rows into the draft, joining bars in a row that touch.
   void _setRows(List<ScheduleRow> rows) => _edit(
     _draft!.copyWith(
-      rows: [for (final r in rows) r.copyWith(windows: mergeWindows(r.windows))],
+      rows: [
+        for (final r in rows) r.copyWith(windows: mergeWindows(r.windows)),
+      ],
     ),
   );
 
@@ -213,9 +219,7 @@ class _TemplateManagerState extends ConsumerState<_TemplateManager> {
         ),
     ];
     _setRows(
-      _qaCombine
-          ? packRows(_draft!.rows, added)
-          : [..._draft!.rows, ...added],
+      _qaCombine ? packRows(_draft!.rows, added) : [..._draft!.rows, ...added],
     );
   }
 
@@ -343,7 +347,8 @@ class _TemplateManagerState extends ConsumerState<_TemplateManager> {
   String _scopeLabel(ScheduleTemplate t) {
     if (t.allStores) return 'All stores';
     final ids = _storesOf(t);
-    if (ids.length == 1 && ids.first == widget.storeId) return 'This store only';
+    if (ids.length == 1 && ids.first == widget.storeId)
+      return 'This store only';
     final names = {for (final s in _allStores) s.id: s.name};
     if (ids.length <= 2) {
       return ids.map((id) => names[id] ?? 'Unknown store').join(', ');
@@ -362,7 +367,9 @@ class _TemplateManagerState extends ConsumerState<_TemplateManager> {
     if (!_initialized && templatesAsync.hasValue) {
       _initialized = true;
       final initial =
-          templates.where((t) => t.id == widget.initialTemplateId).firstOrNull ??
+          templates
+              .where((t) => t.id == widget.initialTemplateId)
+              .firstOrNull ??
           templates.firstOrNull;
       if (initial != null) {
         _draft = _normalized(initial);
@@ -407,7 +414,7 @@ class _TemplateManagerState extends ConsumerState<_TemplateManager> {
       padding: const EdgeInsets.fromLTRB(20, 14, 12, 14),
       child: Row(
         children: [
-          Icon(Icons.view_timeline_outlined, color: AppTheme.accent2),
+          Icon(Icons.table_chart, color: AppTheme.accent2),
           const SizedBox(width: 10),
           Text(
             'Staffing templates',
@@ -421,7 +428,11 @@ class _TemplateManagerState extends ConsumerState<_TemplateManager> {
           if (_draft != null) ...[
             TextButton.icon(
               onPressed: _saving ? null : _delete,
-              icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+              icon: const Icon(
+                Icons.delete_outline,
+                size: 18,
+                color: Colors.red,
+              ),
               label: const Text('Delete', style: TextStyle(color: Colors.red)),
             ),
             const SizedBox(width: 8),
@@ -461,10 +472,7 @@ class _TemplateManagerState extends ConsumerState<_TemplateManager> {
 
   Widget _buildTemplateList(ThemeData theme, List<ScheduleTemplate> templates) {
     final draft = _draft;
-    final items = [
-      ...templates,
-      if (draft != null && _isNew) draft,
-    ];
+    final items = [...templates, if (draft != null && _isNew) draft];
     return SizedBox(
       width: 250,
       child: Column(
@@ -519,7 +527,7 @@ class _TemplateManagerState extends ConsumerState<_TemplateManager> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.view_timeline_outlined,
+            Icons.table_chart,
             size: 52,
             color: theme.textTheme.bodySmall?.color,
           ),
@@ -719,10 +727,9 @@ class _TemplateManagerState extends ConsumerState<_TemplateManager> {
               );
               if (picked != null) setState(() => _qaTitles = picked);
             },
-            icon: Icon(
-              _qaTitles.isEmpty ? Icons.people_outline : Icons.star,
-              size: 16,
-            ),
+            icon: _qaTitles.isEmpty
+                ? const Icon(Icons.people_outline, size: 16)
+                : const Icon(Icons.star, size: 16),
             label: Text(
               _qaTitles.isEmpty ? 'Anyone' : 'Only ${_qaTitles.join(', ')}',
             ),
@@ -915,9 +922,7 @@ class _TemplateTimelineState extends State<_TemplateTimeline> {
             .toInt();
         return (_dragRow!, TimeWindow(s, w.end));
       case _SlotDrag.resizeEnd:
-        final e = (w.end + shift)
-            .clamp(w.start + kScheduleStep, m.end)
-            .toInt();
+        final e = (w.end + shift).clamp(w.start + kScheduleStep, m.end).toInt();
         return (_dragRow!, TimeWindow(w.start, e));
     }
   }
@@ -1131,7 +1136,9 @@ class _TemplateTimelineState extends State<_TemplateTimeline> {
           ),
           if (tag != null && m.w(w.start, w.end) > 120) ...[
             const SizedBox(width: 6),
-            Flexible(child: SlotTag(text: tag, color: titleColor)),
+            Flexible(
+              child: SlotTag(text: tag, color: titleColor),
+            ),
           ],
         ],
       ),
@@ -1411,7 +1418,9 @@ class _StoreScopeDialogState extends State<_StoreScopeDialog> {
                                   : s.name,
                             ),
                             onChanged: (v) => setState(
-                              () => v == true ? _ids.add(s.id) : _ids.remove(s.id),
+                              () => v == true
+                                  ? _ids.add(s.id)
+                                  : _ids.remove(s.id),
                             ),
                           ),
                       ],

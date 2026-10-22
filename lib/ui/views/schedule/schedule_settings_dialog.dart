@@ -46,7 +46,8 @@ class _ScheduleSettingsDialog extends StatefulWidget {
   });
 
   @override
-  State<_ScheduleSettingsDialog> createState() => _ScheduleSettingsDialogState();
+  State<_ScheduleSettingsDialog> createState() =>
+      _ScheduleSettingsDialogState();
 }
 
 class _ScheduleSettingsDialogState extends State<_ScheduleSettingsDialog> {
@@ -108,7 +109,12 @@ class _ScheduleSettingsDialogState extends State<_ScheduleSettingsDialog> {
     _c = _c.copyWith(trainingDays: days);
   });
 
-  Widget _section(ThemeData theme, String title, String subtitle, Widget trailing) {
+  Widget _section(
+    ThemeData theme,
+    String title,
+    String subtitle,
+    Widget trailing,
+  ) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -127,7 +133,10 @@ class _ScheduleSettingsDialogState extends State<_ScheduleSettingsDialog> {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.textTheme.bodySmall?.color,
+                ),
               ),
             ],
           ),
@@ -165,10 +174,14 @@ class _ScheduleSettingsDialogState extends State<_ScheduleSettingsDialog> {
                 ),
                 items: [
                   for (var d = 1; d <= 7; d++)
-                    DropdownMenuItem(value: d, child: Text(weekdayNames[d - 1])),
+                    DropdownMenuItem(
+                      value: d,
+                      child: Text(weekdayNames[d - 1]),
+                    ),
                 ],
-                onChanged: (v) =>
-                    setState(() => _c = _c.copyWith(weekStart: v ?? _c.weekStart)),
+                onChanged: (v) => setState(
+                  () => _c = _c.copyWith(weekStart: v ?? _c.weekStart),
+                ),
               ),
               const SizedBox(height: 12),
               // --- Rules -----------------------------------------------------
@@ -179,7 +192,8 @@ class _ScheduleSettingsDialogState extends State<_ScheduleSettingsDialog> {
                     rules: _c.rules,
                     designations: widget.designations,
                   );
-                  if (rules != null) setState(() => _c = _c.copyWith(rules: rules));
+                  if (rules != null)
+                    setState(() => _c = _c.copyWith(rules: rules));
                 },
                 icon: const Icon(Icons.rule, size: 18),
                 label: const Text('Rules'),
@@ -244,7 +258,10 @@ class _ScheduleSettingsDialogState extends State<_ScheduleSettingsDialog> {
                 Switch(
                   value: _c.minTitleEnabled,
                   onChanged: (v) => setState(
-                    () => _c = _c.copyWith(minTitleEnabled: v, minTitle: minTitle),
+                    () => _c = _c.copyWith(
+                      minTitleEnabled: v,
+                      minTitle: minTitle,
+                    ),
                   ),
                 ),
               ),
@@ -270,7 +287,8 @@ class _ScheduleSettingsDialogState extends State<_ScheduleSettingsDialog> {
                           child: Text('${i + 1}. ${widget.titles[i]}'),
                         ),
                     ],
-                    onChanged: (v) => setState(() => _c = _c.copyWith(minTitle: v)),
+                    onChanged: (v) =>
+                        setState(() => _c = _c.copyWith(minTitle: v)),
                   ),
               ],
               const SizedBox(height: 20),
@@ -491,7 +509,8 @@ class _ScheduleSettingsDialogState extends State<_ScheduleSettingsDialog> {
               ButtonSegment(value: false, label: Text('Solo')),
             ],
             selected: {d.training},
-            onSelectionChanged: (v) => _setDay(i, d.copyWith(training: v.first)),
+            onSelectionChanged: (v) =>
+                _setDay(i, d.copyWith(training: v.first)),
           ),
           const SizedBox(width: 10),
           Text('on', style: TextStyle(color: theme.textTheme.bodySmall?.color)),
@@ -508,12 +527,17 @@ class _ScheduleSettingsDialogState extends State<_ScheduleSettingsDialog> {
                 border: OutlineInputBorder(),
               ),
               items: [
-                const DropdownMenuItem<String?>(value: null, child: Text('Any position')),
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Any position'),
+                ),
                 for (final p in widget.positions)
                   DropdownMenuItem<String?>(value: p.id, child: Text(p.name)),
               ],
-              onChanged: (v) =>
-                  _setDay(i, d.copyWith(positionId: v, clearPosition: v == null)),
+              onChanged: (v) => _setDay(
+                i,
+                d.copyWith(positionId: v, clearPosition: v == null),
+              ),
             ),
           ),
           IconButton(

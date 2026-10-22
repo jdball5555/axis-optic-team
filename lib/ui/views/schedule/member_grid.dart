@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../models/schedule_models.dart';
@@ -9,6 +10,7 @@ import '../../../models/user_model.dart';
 import 'schedule_common.dart';
 import 'coverage_strip.dart';
 import 'schedule_ops.dart';
+import '../../widgets/scroll_table.dart';
 
 /// Team-member view of a day: one thin row per person, name (and times) on
 /// the left. No template bars; the coverage counts stay at the top.
@@ -97,7 +99,8 @@ enum _RowPart { name, timeline }
 class _MemberScheduleGridState extends State<MemberScheduleGrid> {
   /// Name column collapsed to just names (no shift / hours pills).
   bool _compact = false;
-  double get _nameW => _compact ? _compactWidth() : MemberScheduleGrid.nameWidth;
+  double get _nameW =>
+      _compact ? _compactWidth() : MemberScheduleGrid.nameWidth;
 
   /// Collapsed: fits the longest name (plus the color dot, padding and room
   /// for the training hat), between the min and max (very long names are
@@ -105,7 +108,10 @@ class _MemberScheduleGridState extends State<MemberScheduleGrid> {
   double _compactWidth() {
     final scaler = MediaQuery.textScalerOf(context);
     // Measured once per set of names (not on every rebuild while dragging).
-    final key = Object.hash(scaler, Object.hashAll(widget.people.map((u) => personName(u, short: true))));
+    final key = Object.hash(
+      scaler,
+      Object.hashAll(widget.people.map((u) => personName(u, short: true))),
+    );
     if (key == _measuredKey) return _measured;
     var longest = 0.0;
     for (final u in widget.people) {
@@ -138,27 +144,7 @@ class _MemberScheduleGridState extends State<MemberScheduleGrid> {
   /// shrinking, so the coverage numbers (3/3, 5/5, ...) always fit.
   static const double _minPixelsPerMinute = 1.1;
 
-  final _vertical = ScrollController();
   final _timelineKey = GlobalKey();
-  final _hHeader = ScrollController();
-  final _hBody = ScrollController();
-  bool _syncing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _hBody.addListener(() => _sync(_hBody, _hHeader));
-    _hHeader.addListener(() => _sync(_hHeader, _hBody));
-  }
-
-  /// Keeps the time header and the rows scrolled to the same spot.
-  void _sync(ScrollController from, ScrollController to) {
-    if (_syncing || !to.hasClients || !from.hasClients) return;
-    if ((to.offset - from.offset).abs() < 0.5) return;
-    _syncing = true;
-    to.jumpTo(from.offset.clamp(0.0, to.position.maxScrollExtent));
-    _syncing = false;
-  }
 
   String? _hoverUid;
 
@@ -169,14 +155,6 @@ class _MemberScheduleGridState extends State<MemberScheduleGrid> {
   int? _anchor;
   int? _current;
   double _dx = 0;
-
-  @override
-  void dispose() {
-    _vertical.dispose();
-    _hHeader.dispose();
-    _hBody.dispose();
-    super.dispose();
-  }
 
   int _snap(double minutes) =>
       (minutes / kScheduleStep).round() * kScheduleStep;
@@ -284,157 +262,112 @@ class _MemberScheduleGridState extends State<MemberScheduleGrid> {
           ],
         );
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                SizedBox(
-                  width: _nameW + 8,
-                  height:
-                      MemberScheduleGrid.headerHeight + CoverageStrip.height,
-                  child: Align(
-                    alignment: Alignment.bottomLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text.rich(
-                              TextSpan(
-                                children: [
-                                  const TextSpan(text: 'TEAM'),
-                                  TextSpan(
-                                    text: '  ${day.shifts.length} working',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w500,
-                                      letterSpacing: 0,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.8,
-                                color: theme.textTheme.bodySmall?.color,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: _compact
-                                ? 'Show shifts and hours'
-                                : 'Names only',
-                            visualDensity: VisualDensity.compact,
-                            iconSize: 18,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                              minWidth: 28,
-                              minHeight: 28,
-                            ),
-                            onPressed: () =>
-                                setState(() => _compact = !_compact),
-                            icon: Icon(
-                              _compact
-                                  ? Icons.keyboard_double_arrow_right
-                                  : Icons.keyboard_double_arrow_left,
-                              color: theme.textTheme.bodySmall?.color,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+        return ScrollTable(
+          width: m.width,
+          header: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TimelineHeader(
+                metrics: m,
+                height: MemberScheduleGrid.headerHeight,
+              ),
+              Tooltip(
+                message: 'Scheduled / needed people for each half hour',
+                child: CoverageStrip(day: day, metrics: m),
+              ),
+            ],
+          ),
+          body: (vertical) => SingleChildScrollView(
+            controller: vertical,
+            child: DragTarget<PersonDrag>(
+              onAcceptWithDetails: (d) {
+                final box =
+                    _timelineKey.currentContext?.findRenderObject()
+                        as RenderBox?;
+                final dx = box?.globalToLocal(d.offset).dx ?? 0;
+                widget.onSetBlock(
+                  d.data.userId,
+                  null,
+                  placeShift(TimeWindow(m.start, m.end), _minuteAt(m, dx)),
+                );
+              },
+              builder: (context, candidate, _) => Container(
+                key: _timelineKey,
+                width: m.width,
+                decoration: BoxDecoration(
+                  color: candidate.isNotEmpty
+                      ? AppTheme.accent2.withValues(alpha: 0.06)
+                      : null,
+                  borderRadius: BorderRadius.circular(6),
                 ),
-                Expanded(
-                  child: Scrollbar(
-                    controller: _hHeader,
-                    child: SingleChildScrollView(
-                      controller: _hHeader,
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: m.width,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                child: rows(_RowPart.timeline),
+              ),
+            ),
+          ),
+          pinnedWidth: _nameW + 8,
+          pinnedHeader: SizedBox(
+            width: _nameW + 8,
+            height: MemberScheduleGrid.headerHeight + CoverageStrip.height,
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 4, right: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
                           children: [
-                            TimelineHeader(
-                              metrics: m,
-                              height: MemberScheduleGrid.headerHeight,
-                            ),
-                            Tooltip(
-                              message:
-                                  'Scheduled / needed people for each half hour',
-                              child: CoverageStrip(day: day, metrics: m),
+                            const TextSpan(text: 'TEAM'),
+                            TextSpan(
+                              text: '  ${day.shifts.length} working',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0,
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: Scrollbar(
-                controller: _vertical,
-                child: SingleChildScrollView(
-                  controller: _vertical,
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(width: _nameW, child: rows(_RowPart.name)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Scrollbar(
-                          controller: _hBody,
-                          child: SingleChildScrollView(
-                            controller: _hBody,
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.only(bottom: 10),
-                            // Drop someone from "Who can work" anywhere here:
-                            // a 6-hour shift starting where it was let go.
-                            child: DragTarget<PersonDrag>(
-                              onAcceptWithDetails: (d) {
-                                final box =
-                                    _timelineKey.currentContext
-                                            ?.findRenderObject()
-                                        as RenderBox?;
-                                final dx = box?.globalToLocal(d.offset).dx ?? 0;
-                                widget.onSetBlock(
-                                  d.data.userId,
-                                  null,
-                                  placeShift(
-                                    TimeWindow(m.start, m.end),
-                                    _minuteAt(m, dx),
-                                  ),
-                                );
-                              },
-                              builder: (context, candidate, _) => Container(
-                                key: _timelineKey,
-                                width: m.width,
-                                decoration: BoxDecoration(
-                                  color: candidate.isNotEmpty
-                                      ? AppTheme.accent2.withValues(alpha: 0.06)
-                                      : null,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: rows(_RowPart.timeline),
-                              ),
-                            ),
-                          ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.8,
+                          color: theme.textTheme.bodySmall?.color,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    IconButton(
+                      tooltip: _compact
+                          ? 'Show shifts and hours'
+                          : 'Names only',
+                      visualDensity: VisualDensity.compact,
+                      iconSize: 18,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 28,
+                        minHeight: 28,
+                      ),
+                      onPressed: () => setState(() => _compact = !_compact),
+                      icon: _compact
+                          ? const Icon(Icons.keyboard_double_arrow_right)
+                          : const Icon(Icons.keyboard_double_arrow_left),
+                      color: theme.textTheme.bodySmall?.color,
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
+          ),
+          pinnedBody: (vertical) => SingleChildScrollView(
+            controller: vertical,
+            physics: const NeverScrollableScrollPhysics(),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: SizedBox(width: _nameW, child: rows(_RowPart.name)),
+            ),
+          ),
         );
       },
     );
@@ -547,15 +480,15 @@ class _MemberScheduleGridState extends State<MemberScheduleGrid> {
                                 ?training,
                               ].join('\n'),
                               waitDuration: const Duration(milliseconds: 500),
-                              child: Text(
-                                personName(user, short: true),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: theme.textTheme.bodyLarge?.color,
-                                ),
+                              child: _HoverableGridMemberName(
+                                name: personName(user, short: true),
+                                onTap: () {
+                                  if (user.id != null) {
+                                    context.go(
+                                      '/member/${user.id}?from=/schedule',
+                                    );
+                                  }
+                                },
                               ),
                             ),
                           ),
@@ -901,7 +834,9 @@ class _MemberScheduleGridState extends State<MemberScheduleGrid> {
       ),
       child: width < 56
           ? (admin && width >= 16
-                ? Center(child: Icon(Icons.assignment_outlined, size: 13, color: fg))
+                ? Center(
+                    child: Icon(Icons.assignment_outlined, size: 13, color: fg),
+                  )
                 : null)
           : Row(
               children: [
@@ -932,6 +867,56 @@ class _MemberScheduleGridState extends State<MemberScheduleGrid> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _HoverableGridMemberName extends StatefulWidget {
+  final String name;
+  final VoidCallback onTap;
+
+  const _HoverableGridMemberName({required this.name, required this.onTap});
+
+  @override
+  State<_HoverableGridMemberName> createState() =>
+      _HoverableGridMemberNameState();
+}
+
+class _HoverableGridMemberNameState extends State<_HoverableGridMemberName> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _hovered ? 1.04 : 1.0,
+          duration: const Duration(milliseconds: 140),
+          alignment: Alignment.centerLeft,
+          child: Text(
+            widget.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: _hovered
+                  ? theme.colorScheme.primary
+                  : theme.textTheme.bodyLarge?.color,
+              decoration: _hovered
+                  ? TextDecoration.underline
+                  : TextDecoration.none,
+              decorationColor: theme.colorScheme.primary.withValues(alpha: 0.6),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

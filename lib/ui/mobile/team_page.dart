@@ -71,7 +71,10 @@ class _TeamMobilePageState extends ConsumerState<TeamMobilePage> {
     final settings = ref.watch(storeSettingsProvider).valueOrNull;
     final async = ref.watch(currentMembersProvider);
     final all = [...?async.valueOrNull]
-      ..sort((a, b) => fullNameOf(a).toLowerCase().compareTo(fullNameOf(b).toLowerCase()));
+      ..sort(
+        (a, b) =>
+            fullNameOf(a).toLowerCase().compareTo(fullNameOf(b).toLowerCase()),
+      );
     final titles = [
       for (final t in settings?.titles ?? const <TitleConfig>[])
         if (all.any((u) => u.title == t.name)) t.name,
@@ -113,7 +116,7 @@ class _TeamMobilePageState extends ConsumerState<TeamMobilePage> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: AppTheme.accent, width: 1.5),
+              borderSide: BorderSide(color: MBrand.red, width: 1.5),
             ),
           ),
         ),
@@ -126,7 +129,7 @@ class _TeamMobilePageState extends ConsumerState<TeamMobilePage> {
               children: [
                 _FilterChip(
                   label: 'Everyone',
-                  color: AppTheme.accent,
+                  color: MBrand.red,
                   selected: _title == null,
                   onTap: () => setState(() => _title = null),
                 ),
@@ -135,7 +138,8 @@ class _TeamMobilePageState extends ConsumerState<TeamMobilePage> {
                     label: t,
                     color: titleColor(t, settings),
                     selected: _title == t,
-                    onTap: () => setState(() => _title = _title == t ? null : t),
+                    onTap: () =>
+                        setState(() => _title = _title == t ? null : t),
                   ),
               ],
             ),
@@ -193,7 +197,9 @@ class _FilterChip extends StatelessWidget {
             color: selected ? AppTheme.tint(color) : c.card,
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
-              color: selected ? AppTheme.edge(color) : c.line.withValues(alpha: 0.8),
+              color: selected
+                  ? AppTheme.edge(color)
+                  : c.line.withValues(alpha: 0.8),
               width: selected ? 1.5 : 1,
             ),
           ),
@@ -221,12 +227,14 @@ class _MemberTile extends StatelessWidget {
     final c = MColors(context);
     final color = titleColor(user.title, settings);
     final checklist = activeChecklistsFor(user, settings).firstOrNull;
-    final done = {for (final t in user.completedTasks ?? const <String>[]) t.trim()};
+    final done = {
+      for (final t in user.completedTasks ?? const <String>[]) t.trim(),
+    };
     final permit = permitStatus(user.foodHandlersExpiration);
-    final details = [user.position, user.workingTime]
-        .whereType<String>()
-        .where((s) => s.isNotEmpty)
-        .join(' · ');
+    final details = [
+      user.position,
+      user.workingTime,
+    ].whereType<String>().where((s) => s.isNotEmpty).join(' · ');
     return MCard(
       padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
       onTap: user.id == null ? null : () => context.push('/m/team/${user.id}'),
@@ -257,18 +265,25 @@ class _MemberTile extends StatelessWidget {
                     if (user.title != null) MPill(user.title!, color: color),
                     if (checklist != null)
                       MPill(
-                        '${checklist.name} ${cl(checklist, done)}/${checklist.items.length}',
-                        color: AppTheme.getColorFromName(checklist.color) == Colors.grey
+                        '${checklist.name} ${cl(checklist, done, user.position)}/${checklist.tasksForPosition(user.position).length}',
+                        color:
+                            AppTheme.getColorFromName(checklist.color) ==
+                                Colors.grey
                             ? AppTheme.teal
                             : AppTheme.getColorFromName(checklist.color),
                       ),
                     if (!permit.ok)
                       MPill(
-                        user.foodHandlersExpiration == null ? 'No permit' : permit.label,
+                        user.foodHandlersExpiration == null
+                            ? 'No permit'
+                            : permit.label,
                         color: permit.color,
                       ),
                     if (details.isNotEmpty)
-                      Text(details, style: TextStyle(fontSize: 12.5, color: c.muted)),
+                      Text(
+                        details,
+                        style: TextStyle(fontSize: 12.5, color: c.muted),
+                      ),
                   ],
                 ),
               ],
@@ -280,8 +295,10 @@ class _MemberTile extends StatelessWidget {
     );
   }
 
-  static int cl(ChecklistConfig checklist, Set<String> done) =>
-      checklist.items.where((i) => done.contains(i.trim())).length;
+  static int cl(ChecklistConfig checklist, Set<String> done, [String? position]) {
+    final tasks = checklist.tasksForPosition(position);
+    return tasks.where((i) => done.contains(i.text.trim())).length;
+  }
 }
 
 // =============================================================================
@@ -317,10 +334,12 @@ class MemberMobilePage extends ConsumerWidget {
     final color = titleColor(user.title, settings);
     final storeName = (user.store ?? '').isEmpty
         ? null
-        : ref.watch(storeStreamProvider(user.store!)).valueOrNull?['name'] as String?;
+        : ref.watch(storeStreamProvider(user.store!)).valueOrNull?['name']
+              as String?;
     final status = memberStatus(user);
     final food = permitStatus(user.foodHandlersExpiration);
-    final needsMgr = settings?.titles
+    final needsMgr =
+        settings?.titles
             .where((t) => t.name == user.title)
             .firstOrNull
             ?.mgrPermit ??
@@ -334,7 +353,9 @@ class MemberMobilePage extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
         children: [
           // Header.
-          Center(child: MAvatar(initials: initialsOf(user), color: color, size: 84)),
+          Center(
+            child: MAvatar(initials: initialsOf(user), color: color, size: 84),
+          ),
           const SizedBox(height: 14),
           Text(
             fullNameOf(user),
@@ -360,7 +381,8 @@ class MemberMobilePage extends ConsumerWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              if (user.title != null) MPill(user.title!, color: color, large: true),
+              if (user.title != null)
+                MPill(user.title!, color: color, large: true),
               for (final t in user.additionalTags ?? const <String>[])
                 MPill(t, color: tagColor(t, settings), large: true),
               MPill(
@@ -373,7 +395,12 @@ class MemberMobilePage extends ConsumerWidget {
                 },
               ),
               if (user.foodHandlersExpiration == null)
-                MPill('No food permit', color: AppTheme.red, large: true, filled: true),
+                MPill(
+                  'No food permit',
+                  color: AppTheme.red,
+                  large: true,
+                  filled: true,
+                ),
             ],
           ),
           if ((user.email ?? '').isNotEmpty) ...[
@@ -385,7 +412,8 @@ class MemberMobilePage extends ConsumerWidget {
                     label: 'Email',
                     icon: Icons.mail_outline,
                     secondary: true,
-                    onPressed: () => launchUrl(Uri.parse('mailto:${user.email}')),
+                    onPressed: () =>
+                        launchUrl(Uri.parse('mailto:${user.email}')),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -417,7 +445,8 @@ class MemberMobilePage extends ConsumerWidget {
             child: Column(
               children: [
                 MField('First name', user.firstName),
-                if ((user.preferredName ?? '').isNotEmpty) MField('Preferred name', user.preferredName),
+                if ((user.preferredName ?? '').isNotEmpty)
+                  MField('Preferred name', user.preferredName),
                 MField('Last name', user.lastName),
                 MField('Email', user.email),
                 MField('Title', user.title),
@@ -498,7 +527,11 @@ class MemberMobilePage extends ConsumerWidget {
                         children: [
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
-                            child: Icon(Icons.circle, size: 8, color: AppTheme.blue),
+                            child: Icon(
+                              Icons.circle,
+                              size: 8,
+                              color: AppTheme.blue,
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -507,12 +540,20 @@ class MemberMobilePage extends ConsumerWidget {
                               children: [
                                 Text(
                                   '${log['event'] ?? 'Event'}',
-                                  style: TextStyle(fontWeight: FontWeight.w600, color: c.text),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: c.text,
+                                  ),
                                 ),
                                 if ((log['date'] ?? log['timestamp']) != null)
                                   Text(
-                                    _historyDate(log['date'] ?? log['timestamp']),
-                                    style: TextStyle(fontSize: 12.5, color: c.muted),
+                                    _historyDate(
+                                      log['date'] ?? log['timestamp'],
+                                    ),
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      color: c.muted,
+                                    ),
                                   ),
                               ],
                             ),
@@ -530,7 +571,6 @@ class MemberMobilePage extends ConsumerWidget {
   }
 }
 
-
 List<Widget> _checklists(
   BuildContext context,
   UserModel user,
@@ -539,7 +579,9 @@ List<Widget> _checklists(
   final c = MColors(context);
   final active = activeChecklistsFor(user, settings);
   if (active.isEmpty) return const <Widget>[];
-  final done = {for (final t in user.completedTasks ?? const <String>[]) t.trim()};
+  final done = {
+    for (final t in user.completedTasks ?? const <String>[]) t.trim(),
+  };
   return [
     const MSection('Checklists'),
     for (final cl in active)
@@ -550,9 +592,17 @@ List<Widget> _checklists(
             final col = AppTheme.getColorFromName(cl.color) == Colors.grey
                 ? AppTheme.teal
                 : AppTheme.getColorFromName(cl.color);
-            final n = cl.items.where((i) => done.contains(i.trim())).length;
+            final applicable = cl.tasksForPosition(user.position);
+            final n = applicable.where((i) => done.contains(i.text.trim())).length;
+            final total = applicable.length;
             return MCard(
-              onTap: () => showChecklistSheet(context, cl.name, cl.items, done, col),
+              onTap: () => showChecklistSheet(
+                context,
+                cl.name,
+                applicable.map((t) => t.text).toList(),
+                done,
+                col,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -563,11 +613,14 @@ List<Widget> _checklists(
                       Expanded(
                         child: Text(
                           cl.name,
-                          style: TextStyle(fontWeight: FontWeight.w700, color: c.title),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: c.title,
+                          ),
                         ),
                       ),
                       Text(
-                        '$n / ${cl.items.length}',
+                        '$n / $total',
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           color: AppTheme.onTint(col),
@@ -576,7 +629,10 @@ List<Widget> _checklists(
                     ],
                   ),
                   const SizedBox(height: 10),
-                  MProgress(value: cl.items.isEmpty ? 0 : n / cl.items.length, color: col),
+                  MProgress(
+                    value: total == 0 ? 0 : n / total,
+                    color: col,
+                  ),
                 ],
               ),
             );
@@ -640,7 +696,10 @@ class _AvailabilityCard extends StatelessWidget {
     final c = MColors(context);
     if (data == null || data!.isEmpty) {
       return MCard(
-        child: Text('No availability on file.', style: TextStyle(color: c.muted)),
+        child: Text(
+          'No availability on file.',
+          style: TextStyle(color: c.muted),
+        ),
       );
     }
     final byDay = parseAvailability(data);
@@ -657,14 +716,18 @@ class _AvailabilityCard extends StatelessWidget {
                 (byDay[availabilityDays[i]] ?? const []).isEmpty
                     ? 'Unavailable'
                     : byDay[availabilityDays[i]]!
-                        .map((w) => w.start % 1440 == 0 && w.minutes >= 1440
-                            ? 'All day'
-                            : formatRange(w.start, w.end))
-                        .join(', '),
+                          .map(
+                            (w) => w.start % 1440 == 0 && w.minutes >= 1440
+                                ? 'All day'
+                                : formatRange(w.start, w.end),
+                          )
+                          .join(', '),
                 textAlign: TextAlign.right,
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: (byDay[availabilityDays[i]] ?? const []).isEmpty ? c.muted : c.text,
+                  color: (byDay[availabilityDays[i]] ?? const []).isEmpty
+                      ? c.muted
+                      : c.text,
                 ),
               ),
             ),
@@ -686,9 +749,19 @@ class _NoteCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: c.muted)),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: c.muted,
+            ),
+          ),
           const SizedBox(height: 6),
-          Text(text, style: TextStyle(fontSize: 14.5, height: 1.45, color: c.text)),
+          Text(
+            text,
+            style: TextStyle(fontSize: 14.5, height: 1.45, color: c.text),
+          ),
         ],
       ),
     );
@@ -707,7 +780,8 @@ class _MemberWeek extends ConsumerWidget {
     final c = MColors(context);
     final access = ref.watch(mobileAccessProvider);
     final config =
-        ref.watch(scheduleConfigProvider(storeId)).valueOrNull ?? const ScheduleConfig();
+        ref.watch(scheduleConfigProvider(storeId)).valueOrNull ??
+        const ScheduleConfig();
     if (!access.scheduleOn) return const SizedBox.shrink();
     final weekStart = weekStartFor(DateTime.now(), config.weekStart);
     final entries = <RosterEntry>[];
@@ -723,7 +797,9 @@ class _MemberWeek extends ConsumerWidget {
             )
             .valueOrNull;
         for (final day in week?.values ?? const <ScheduleDay>[]) {
-          entries.addAll(entriesFromDay(day, b.id).where((e) => e.userId == userId));
+          entries.addAll(
+            entriesFromDay(day, b.id).where((e) => e.userId == userId),
+          );
         }
       }
     } else {
@@ -753,7 +829,11 @@ class _MemberWeek extends ConsumerWidget {
           'This week',
           action: Text(
             '${formatHours(hours)} hrs',
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: c.muted),
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: c.muted,
+            ),
           ),
         ),
         MCard(
@@ -761,13 +841,18 @@ class _MemberWeek extends ConsumerWidget {
           child: entries.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  child: Text('Not on the schedule this week.', style: TextStyle(color: c.muted)),
+                  child: Text(
+                    'Not on the schedule this week.',
+                    style: TextStyle(color: c.muted),
+                  ),
                 )
               : Column(
                   children: [
                     for (var i = 0; i < entries.length; i++)
                       MField(
-                        relativeDay(parseDateKey(entries[i].date) ?? DateTime.now()),
+                        relativeDay(
+                          parseDateKey(entries[i].date) ?? DateTime.now(),
+                        ),
                         '${formatRange(entries[i].start, entries[i].end)}'
                         '${entries[i].isAdmin ? ' · Admin' : ''}',
                         last: i == entries.length - 1,
@@ -789,7 +874,9 @@ class _MemberTimeOff extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = MColors(context);
     final list =
-        ref.watch(memberTimeOffProvider((storeId: storeId, memberId: userId))).valueOrNull ??
+        ref
+            .watch(memberTimeOffProvider((storeId: storeId, memberId: userId)))
+            .valueOrNull ??
         const <TimeOffRequest>[];
     final today = dateKey(DateTime.now());
     final upcoming = list.where((r) => r.endDate.compareTo(today) >= 0).toList()
@@ -803,7 +890,10 @@ class _MemberTimeOff extends ConsumerWidget {
           child: upcoming.isEmpty
               ? Padding(
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  child: Text('No upcoming time off.', style: TextStyle(color: c.muted)),
+                  child: Text(
+                    'No upcoming time off.',
+                    style: TextStyle(color: c.muted),
+                  ),
                 )
               : Column(
                   children: [

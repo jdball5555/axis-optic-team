@@ -1,12 +1,128 @@
-// Shared look for the phone app: big quiet headings, soft cards and tinted
-// pills, in the same colors as the rest of Axis Team.
+// Shared look for the phone app: every page opens on a deep crimson-to-indigo
+// gradient header with white type (it shrinks into a bar that stays when you
+// scroll), and its content sits on tiles that slide up over the header. The
+// header is the only gradient: the rest is layered grays, solid inverse
+// pills for what's picked, and red as a small solid accent.
+
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../models/schedule_models.dart';
 import '../../models/store_settings_model.dart';
 import '../../models/user_model.dart';
+
+// =============================================================================
+// Brand and theme: one deep gradient (the header), everything else in grays
+// =============================================================================
+
+class MBrand {
+  static const red = Color(0xFFE8304B);
+  static const blue = Color(0xFF3F6BFF);
+
+  /// The page header (and the bar it shrinks into): deep crimson into wine
+  /// into deep indigo. The only gradient in the app.
+  static const hero = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFC3132F), Color(0xFF6B1446), Color(0xFF19247E)],
+    stops: [0, 0.5, 1],
+  );
+
+  /// Red into blue (the website's "View as team member" button).
+  static const accent = LinearGradient(
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+    colors: [red, blue],
+  );
+}
+
+/// The phone app's grays, darkest to lightest (light mode flips them).
+class _Grays {
+  const _Grays({
+    required this.bg,
+    required this.band,
+    required this.card,
+    required this.raised,
+    required this.sunken,
+    required this.line,
+    required this.inverse,
+    required this.onInverse,
+  });
+  final Color bg, band, card, raised, sunken, line, inverse, onInverse;
+
+  static const dark = _Grays(
+    bg: Color(0xFF0D0E12),
+    band: Color(0xFF17191F),
+    card: Color(0xFF1D2027),
+    raised: Color(0xFF2A2D36),
+    sunken: Color(0xFF111216),
+    line: Color(0xFF2E313B),
+    inverse: Color(0xFFF4F5F7),
+    onInverse: Color(0xFF0D0E12),
+  );
+  static const light = _Grays(
+    bg: Color(0xFFE5E7ED),
+    band: Color(0xFFF2F3F6),
+    card: Color(0xFFFFFFFF),
+    raised: Color(0xFFEEF0F4),
+    sunken: Color(0xFFE9EBF0),
+    line: Color(0xFFD8DBE3),
+    inverse: Color(0xFF15171C),
+    onInverse: Color(0xFFFFFFFF),
+  );
+
+  static _Grays of(ThemeData theme) =>
+      theme.brightness == Brightness.dark ? dark : light;
+}
+
+/// The phone app's surfaces: layered grays so pages aren't just black and
+/// the gradient header.
+ThemeData mobileTheme(ThemeData base) {
+  final g = _Grays.of(base);
+  final dark = base.brightness == Brightness.dark;
+  return base.copyWith(
+    scaffoldBackgroundColor: g.bg,
+    cardColor: g.card,
+    canvasColor: g.card,
+    dividerColor: g.line,
+    colorScheme: base.colorScheme.copyWith(
+      surface: g.card,
+      primary: MBrand.red,
+      secondary: MBrand.blue,
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(color: MBrand.red),
+    bottomSheetTheme: base.bottomSheetTheme.copyWith(
+      backgroundColor: g.card,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+    ),
+    dialogTheme: base.dialogTheme.copyWith(
+      backgroundColor: g.card,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    ),
+    snackBarTheme: base.snackBarTheme.copyWith(
+      backgroundColor: dark ? g.raised : g.inverse,
+      contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
+      actionTextColor: const Color(0xFFFF8094),
+    ),
+  );
+}
+
+/// Gives everything under it the phone app's look (pages, sheets, dialogs).
+class MobileTheme extends StatelessWidget {
+  const MobileTheme({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      Theme(data: mobileTheme(Theme.of(context)), child: child);
+}
 
 // =============================================================================
 // Colors and text helpers
@@ -16,9 +132,24 @@ class MColors {
   MColors(BuildContext context) : theme = Theme.of(context);
   final ThemeData theme;
 
+  _Grays get _g => _Grays.of(theme);
+
   Color get bg => theme.scaffoldBackgroundColor;
   Color get card => theme.cardColor;
   Color get line => theme.dividerColor;
+
+  /// A lighter gray than [card] (chips, icon squares, nested tiles).
+  Color get raised => _g.raised;
+
+  /// A darker gray than [card] (inset areas).
+  Color get sunken => _g.sunken;
+
+  /// The full-width bands between parts of a page.
+  Color get band => _g.band;
+
+  /// Picked things: white on dark, near-black on light, and what's on it.
+  Color get inverse => _g.inverse;
+  Color get onInverse => _g.onInverse;
   Color get text => theme.textTheme.bodyLarge?.color ?? Colors.white;
   Color get title => theme.textTheme.titleLarge?.color ?? text;
   Color get muted => theme.textTheme.bodySmall?.color ?? Colors.grey;
@@ -53,9 +184,10 @@ String firstNameOf(UserModel? u) {
 
 String fullNameOf(UserModel? u) {
   if (u == null) return 'Unknown';
-  final name = [firstNameOf(u), (u.lastName ?? '').trim()]
-      .where((s) => s.isNotEmpty)
-      .join(' ');
+  final name = [
+    firstNameOf(u),
+    (u.lastName ?? '').trim(),
+  ].where((s) => s.isNotEmpty).join(' ');
   return name.isEmpty ? 'Unnamed' : name;
 }
 
@@ -135,7 +267,8 @@ String tenureSince(DateTime start, {DateTime? now}) {
   }
   final days = dateOnly(expires).difference(dateOnly(DateTime.now())).inDays;
   if (days < 0) return (label: 'Expired', color: AppTheme.red, ok: false);
-  if (days == 0) return (label: 'Expires today', color: AppTheme.orange, ok: false);
+  if (days == 0)
+    return (label: 'Expires today', color: AppTheme.orange, ok: false);
   if (days <= 30) {
     return (
       label: 'Expires in $days ${days == 1 ? 'day' : 'days'}',
@@ -150,8 +283,171 @@ String tenureSince(DateTime start, {DateTime? now}) {
 // Building blocks
 // =============================================================================
 
-/// A page: big title, optional subtitle and actions, then content.
-class MPage extends StatelessWidget {
+/// The deep gradient block at the top of a page: white text, a few crisp
+/// diagonal lines and soft glows. The page's tiles slide up over its bottom.
+class MHero extends StatelessWidget {
+  const MHero({super.key, required this.child, this.bottom = 52});
+  final Widget child;
+
+  /// Room under the content (the tiles below overlap part of it).
+  final double bottom;
+
+  /// Whether [context] is on a hero (widgets switch to white-on-color).
+  static bool on(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_OnHero>() != null;
+
+  /// White text and icons for what sits on the gradient.
+  static Widget onGradient(BuildContext context, Widget child) {
+    final theme = Theme.of(context);
+    return _OnHero(
+      child: Theme(
+        data: theme.copyWith(
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(foregroundColor: Colors.white),
+          ),
+          iconTheme: const IconThemeData(color: Colors.white),
+        ),
+        child: DefaultTextStyle.merge(
+          style: const TextStyle(color: Colors.white),
+          child: IconTheme.merge(
+            data: const IconThemeData(color: Colors.white),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hero = DecoratedBox(
+      decoration: const BoxDecoration(gradient: MBrand.hero),
+      child: CustomPaint(
+        painter: const _HeroPainter(),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            MediaQuery.paddingOf(context).top + 16,
+            20,
+            bottom,
+          ),
+          child: onGradient(context, child),
+        ),
+      ),
+    );
+    // Dark: the glows fade out into the page. Light: a crisp edge.
+    return Theme.of(context).brightness == Brightness.light
+        ? ClipRect(child: hero)
+        : hero;
+  }
+}
+
+class _OnHero extends InheritedWidget {
+  const _OnHero({required super.child});
+  @override
+  bool updateShouldNotify(_OnHero old) => false;
+}
+
+class _HeroPainter extends CustomPainter {
+  const _HeroPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Soft glows: blue top right, red bottom left.
+    void glow(Offset c, double r, Color color) => canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [color, color.withValues(alpha: 0)],
+        ).createShader(Rect.fromCircle(center: c, radius: r)),
+    );
+    glow(
+      Offset(size.width * 0.92, size.height * 0.05),
+      size.width * 0.6,
+      const Color(0x664F7BFF),
+    );
+    glow(
+      Offset(size.width * 0.05, size.height * 1.0),
+      size.width * 0.55,
+      const Color(0x44FF3B5C),
+    );
+    // Hard diagonal lines.
+    final line = Paint()
+      ..color = Colors.white.withValues(alpha: 0.07)
+      ..strokeWidth = 1;
+    for (final x in [0.58, 0.7, 0.82]) {
+      canvas.drawLine(
+        Offset(size.width * x, size.height),
+        Offset(size.width * x + size.height * 0.9, 0),
+        line,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeroPainter old) => false;
+}
+
+/// The deep gradient behind the top of a page: a few crisp diagonal lines
+/// and soft glows ([height] tall).
+class _HeroPanel extends StatelessWidget {
+  const _HeroPanel({required this.height});
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final panel = SizedBox(
+      height: height,
+      child: const DecoratedBox(
+        decoration: BoxDecoration(gradient: MBrand.hero),
+        child: CustomPaint(painter: _HeroPainter(), child: SizedBox.expand()),
+      ),
+    );
+    // Dark: the glows fade out into the page. Light: a crisp edge.
+    return Theme.of(context).brightness == Brightness.light
+        ? ClipRect(child: panel)
+        : panel;
+  }
+}
+
+/// The top [visible] pixels of a [_HeroPanel] of [height] (for the bar, so
+/// it lines up with the panel under it).
+class _HeroSlice extends StatelessWidget {
+  const _HeroSlice({required this.height, required this.visible});
+  final double height;
+  final double visible;
+
+  @override
+  Widget build(BuildContext context) => ClipRect(
+    child: SizedBox(
+      height: visible,
+      child: OverflowBox(
+        alignment: Alignment.topCenter,
+        minHeight: height,
+        maxHeight: height,
+        child: SizedBox(
+          height: height,
+          child: const DecoratedBox(
+            decoration: BoxDecoration(gradient: MBrand.hero),
+            child: CustomPaint(
+              painter: _HeroPainter(),
+              child: SizedBox.expand(),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// A page: the gradient header (big white title, optional subtitle and
+/// actions), then the content as tiles that overlap the bottom of it.
+///
+/// Scrolling: the colored panel stays put while the tiles slide up over it,
+/// pushing the header's text up into a slim bar at the top; once the tiles
+/// reach the bar, the rest of the panel scrolls up under it. The bar stays.
+class MPage extends StatefulWidget {
   const MPage({
     super.key,
     required this.title,
@@ -159,6 +455,8 @@ class MPage extends StatelessWidget {
     this.subtitle,
     this.trailing,
     this.header,
+    this.compactTitle,
+    this.compactLeading,
     required this.children,
     this.onRefresh,
   });
@@ -168,26 +466,62 @@ class MPage extends StatelessWidget {
   final String? subtitle;
   final Widget? trailing;
 
-  /// Replaces the standard title block.
+  /// Replaces the standard title block (drawn on the gradient).
   final Widget? header;
+
+  /// The bar's title once scrolled (default [title]) and what's before it.
+  final String? compactTitle;
+  final Widget? compactLeading;
+
+  /// Page content. [MBand]s run edge to edge; everything else is inset.
   final List<Widget> children;
   final Future<void> Function()? onRefresh;
 
+  /// How far the panel reaches under the first tiles.
+  static const overlap = 30.0;
+
+  /// The bar's height under the status bar.
+  static const barHeight = 58.0;
+
+  @override
+  State<MPage> createState() => _MPageState();
+}
+
+class _MPageState extends State<MPage> {
+  /// How far the page is scrolled.
+  final _scroll = ValueNotifier<double>(0);
+
+  /// The header block's height (measured; a guess until then).
+  double? _headerHeight;
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  bool _onScroll(ScrollNotification n) {
+    if (n.depth == 0 && n.metrics.axis == Axis.vertical)
+      _scroll.value = n.metrics.pixels;
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final c = MColors(context);
-    final list = ListView(
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        20,
-        MediaQuery.paddingOf(context).top + 18,
-        20,
-        32,
-      ),
-      children: [
-        header ??
+    final w = widget;
+    final top = MediaQuery.paddingOf(context).top;
+    final barH = top + MPage.barHeight;
+    final headerH = _headerHeight ?? top + 140;
+    final panelH = headerH + MPage.overlap;
+    // The panel holds still until the tiles reach the bar, then follows.
+    double panelShift(double s) =>
+        (s - (headerH - barH)).clamp(0.0, panelH - barH);
+
+    final header = Padding(
+      padding: EdgeInsets.fromLTRB(20, top + 16, 20, 52 - MPage.overlap),
+      child: MHero.onGradient(
+        context,
+        w.header ??
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -195,45 +529,259 @@ class MPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (eyebrow != null) ...[
-                        MEyebrow(eyebrow!),
+                      if (w.eyebrow != null) ...[
+                        MEyebrow(w.eyebrow!),
                         const SizedBox(height: 6),
                       ],
                       Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 32,
-                          height: 1.1,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5,
-                          color: c.title,
+                        w.title,
+                        style: const TextStyle(
+                          fontSize: 34,
+                          height: 1.05,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -1,
+                          color: Colors.white,
                         ),
                       ),
-                      if (subtitle != null) ...[
+                      if (w.subtitle != null) ...[
                         const SizedBox(height: 6),
                         Text(
-                          subtitle!,
-                          style: TextStyle(fontSize: 14, color: c.muted),
+                          w.subtitle!,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white.withValues(alpha: 0.75),
+                          ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                ?trailing,
+                ?w.trailing,
               ],
             ),
-        const SizedBox(height: 22),
-        ...children,
+      ),
+    );
+
+    final list = ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      padding: const EdgeInsets.only(bottom: 32),
+      children: [
+        // The header scrolls with the tiles (they push it up) and fades as
+        // it goes into the bar.
+        _SizeReporter(
+          onSize: (size) {
+            if (mounted && (size.height - (_headerHeight ?? 0)).abs() > 0.5) {
+              setState(() => _headerHeight = size.height);
+            }
+          },
+          child: ValueListenableBuilder<double>(
+            valueListenable: _scroll,
+            child: header,
+            builder: (context, s, child) =>
+                Opacity(opacity: (1 - s / 60).clamp(0.0, 1.0), child: child),
+          ),
+        ),
+        for (final child in w.children)
+          child is MBand
+              ? child
+              : Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: child,
+                ),
       ],
     );
+
+    final title = w.compactTitle ?? w.title;
     return ConstrainedPage(
-      child: onRefresh == null
-          ? list
-          : RefreshIndicator(
-              onRefresh: onRefresh!,
-              color: AppTheme.accent,
-              child: list,
+      child: Stack(
+        children: [
+          // The colored panel, under everything.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: ValueListenableBuilder<double>(
+              valueListenable: _scroll,
+              builder: (context, s, _) => Transform.translate(
+                offset: Offset(0, -panelShift(s)),
+                // Pulled down past the top: it stretches.
+                child: _HeroPanel(height: panelH + math.max(0.0, -s)),
+              ),
             ),
+          ),
+          NotificationListener<ScrollNotification>(
+            onNotification: _onScroll,
+            child: w.onRefresh == null
+                ? list
+                : RefreshIndicator(
+                    onRefresh: w.onRefresh!,
+                    color: MBrand.red,
+                    child: list,
+                  ),
+          ),
+          // The bar, over everything.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: ValueListenableBuilder<double>(
+              valueListenable: _scroll,
+              builder: (context, s, _) {
+                final t = ((s - 30) / 40).clamp(0.0, 1.0);
+                final docked = panelShift(s) > 0;
+                return IgnorePointer(
+                  // Nothing to tap until something scrolls under it.
+                  ignoring: s <= 0,
+                  child: SizedBox(
+                    height: barH,
+                    child: Stack(
+                      children: [
+                        // Solid as soon as anything scrolls up under it (it
+                        // matches the panel, so it doesn't show until then).
+                        if (s > 0)
+                          Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                boxShadow: docked
+                                    ? [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.35,
+                                          ),
+                                          blurRadius: 14,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              // Solid: taps don't reach what's hidden under it.
+                              child: Listener(
+                                behavior: HitTestBehavior.opaque,
+                                child: _HeroSlice(
+                                  height: panelH,
+                                  visible: barH,
+                                ),
+                              ),
+                            ),
+                          ),
+                        // The title slides in as the header's goes under.
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(20, top + 9, 12, 9),
+                          child: IgnorePointer(
+                            ignoring: t < 0.6,
+                            child: Opacity(
+                              opacity: t,
+                              child: Transform.translate(
+                                offset: Offset(0, 10 * (1 - t)),
+                                child: MHero.onGradient(
+                                  context,
+                                  Row(
+                                    children: [
+                                      if (w.compactLeading != null) ...[
+                                        w.compactLeading!,
+                                        const SizedBox(width: 10),
+                                      ],
+                                      Expanded(
+                                        child: Text(
+                                          title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: -0.4,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                      ?w.trailing,
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tells [onSize] its child's size after each layout that changes it.
+class _SizeReporter extends SingleChildRenderObjectWidget {
+  const _SizeReporter({required this.onSize, super.child});
+  final ValueChanged<Size> onSize;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderSizeReporter(onSize);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderSizeReporter renderObject,
+  ) => renderObject.onSize = onSize;
+}
+
+class _RenderSizeReporter extends RenderProxyBox {
+  _RenderSizeReporter(this.onSize);
+  ValueChanged<Size> onSize;
+  Size? _reported;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    if (size != _reported) {
+      _reported = size;
+      final s = size;
+      WidgetsBinding.instance.addPostFrameCallback((_) => onSize(s));
+    }
+  }
+}
+
+/// A full-width band in a lighter gray, with hard edges: breaks a page into
+/// parts. Its content is inset like the rest of the page.
+class MBand extends StatelessWidget {
+  const MBand({
+    super.key,
+    required this.child,
+    this.title,
+    this.margin = const EdgeInsets.only(top: 26),
+  });
+  final Widget child;
+  final String? title;
+  final EdgeInsetsGeometry margin;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MColors(context);
+    return Container(
+      margin: margin,
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+      decoration: BoxDecoration(
+        color: c.band,
+        border: Border.symmetric(horizontal: BorderSide(color: c.line)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (title != null)
+            MSection(title!, top: 14)
+          else
+            const SizedBox(height: 16),
+          child,
+        ],
+      ),
     );
   }
 }
@@ -254,7 +802,7 @@ class ConstrainedPage extends StatelessWidget {
   );
 }
 
-/// Small spaced-out uppercase label (like the website's section labels).
+/// Small spaced-out uppercase label.
 class MEyebrow extends StatelessWidget {
   const MEyebrow(this.text, {super.key, this.color});
   final String text;
@@ -265,14 +813,18 @@ class MEyebrow extends StatelessWidget {
     text.toUpperCase(),
     style: TextStyle(
       fontSize: 11.5,
-      fontWeight: FontWeight.w700,
-      letterSpacing: 1.6,
-      color: color ?? MColors(context).muted,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 1.8,
+      color:
+          color ??
+          (MHero.on(context)
+              ? Colors.white.withValues(alpha: 0.72)
+              : MColors(context).muted),
     ),
   );
 }
 
-/// Section heading with an optional action on the right.
+/// Section heading: a short red line, the label, an optional action.
 class MSection extends StatelessWidget {
   const MSection(this.title, {super.key, this.action, this.top = 26});
   final String title;
@@ -281,17 +833,26 @@ class MSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(top: top, bottom: 10, left: 2),
+    padding: EdgeInsets.only(top: top, bottom: 12, left: 2),
     child: Row(
       children: [
-        Expanded(child: MEyebrow(title)),
+        Container(width: 12, height: 3, color: MBrand.red),
+        const SizedBox(width: 8),
+        Expanded(
+          child: MEyebrow(
+            title,
+            color: MColors(context).title.withValues(alpha: 0.85),
+          ),
+        ),
         ?action,
       ],
     ),
   );
 }
 
-/// A soft rounded card.
+/// A tile: hairline edge, soft depth. [tone] picks the gray ([MTone.raised]
+/// for a lighter one); [glow] gives it a colored edge and glow (the one
+/// thing on a page to look at first).
 class MCard extends StatelessWidget {
   const MCard({
     super.key,
@@ -301,7 +862,8 @@ class MCard extends StatelessWidget {
     this.borderColor,
     this.color,
     this.glow,
-    this.radius = 18,
+    this.tone = MTone.card,
+    this.radius = 20,
   });
 
   final Widget child;
@@ -309,37 +871,50 @@ class MCard extends StatelessWidget {
   final VoidCallback? onTap;
   final Color? borderColor;
   final Color? color;
-
-  /// A soft colored glow around the card.
   final Color? glow;
+  final MTone tone;
   final double radius;
 
   @override
   Widget build(BuildContext context) {
     final c = MColors(context);
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(radius),
-      side: BorderSide(
-        color: borderColor ?? c.line.withValues(alpha: c.light ? 1 : 0.7),
-        width: borderColor != null ? 1.4 : 1,
-      ),
-    );
-    return Container(
-      decoration: glow == null
-          ? null
-          : BoxDecoration(
-              borderRadius: BorderRadius.circular(radius),
-              boxShadow: [
-                BoxShadow(
-                  color: glow!.withValues(alpha: c.light ? 0.18 : 0.22),
-                  blurRadius: 28,
-                  spreadRadius: -4,
-                ),
-              ],
+    final fill =
+        color ??
+        switch (tone) {
+          MTone.card => c.card,
+          MTone.raised => c.raised,
+          MTone.sunken => c.sunken,
+        };
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          if (glow != null)
+            BoxShadow(
+              color: glow!.withValues(alpha: c.light ? 0.18 : 0.22),
+              blurRadius: 28,
+              spreadRadius: -6,
+              offset: const Offset(0, 10),
             ),
+          if (tone != MTone.sunken)
+            BoxShadow(
+              color: Colors.black.withValues(alpha: c.light ? 0.06 : 0.3),
+              blurRadius: c.light ? 16 : 12,
+              offset: const Offset(0, 5),
+            ),
+        ],
+      ),
       child: Material(
-        color: color ?? c.card,
-        shape: shape,
+        color: fill,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radius),
+          side: BorderSide(
+            color:
+                borderColor ??
+                (glow != null ? glow!.withValues(alpha: 0.7) : c.line),
+            width: borderColor != null || glow != null ? 1.4 : 1,
+          ),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
@@ -350,7 +925,11 @@ class MCard extends StatelessWidget {
   }
 }
 
-/// Tinted pill, the same recipe as the app's title and tag bubbles.
+/// Which gray a tile is.
+enum MTone { card, raised, sunken }
+
+/// Tinted pill, the same recipe as the app's title and tag bubbles. On the
+/// gradient header it turns into frosted glass with a colored dot.
 class MPill extends StatelessWidget {
   const MPill(
     this.label, {
@@ -371,23 +950,43 @@ class MPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = filled ? Colors.white : AppTheme.onTint(color);
+    final glass = MHero.on(context) && !filled;
+    final fg = glass || filled ? Colors.white : AppTheme.onTint(color);
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: large ? 12 : 9,
         vertical: large ? 5 : 3,
       ),
       decoration: BoxDecoration(
-        color: filled ? color : AppTheme.tint(color),
+        color: glass
+            ? Colors.white.withValues(alpha: 0.14)
+            : (filled ? color : AppTheme.tint(color)),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: filled ? color : AppTheme.edge(color),
-          width: large ? 1.6 : 1.3,
+          color: glass
+              ? Colors.white.withValues(alpha: 0.32)
+              : (filled ? color : AppTheme.edge(color)),
+          width: large ? 1.4 : 1.2,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (glass && icon == null) ...[
+            Container(
+              width: large ? 8 : 7,
+              height: large ? 8 : 7,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  width: 1,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
           if (icon != null) ...[
             Icon(icon, size: large ? 15 : 13, color: fg),
             const SizedBox(width: 5),
@@ -410,7 +1009,8 @@ class MPill extends StatelessWidget {
   }
 }
 
-/// Round initials in a person's title color.
+/// Round initials in a person's title color (solid with a white ring on
+/// the header).
 class MAvatar extends StatelessWidget {
   const MAvatar({
     super.key,
@@ -424,25 +1024,79 @@ class MAvatar extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: AppTheme.tint(color),
-      border: Border.all(color: AppTheme.edge(color), width: size > 60 ? 2 : 1.4),
-    ),
-    child: Text(
-      initials,
-      style: TextStyle(
-        fontSize: size * 0.36,
-        fontWeight: FontWeight.w800,
-        color: AppTheme.onTint(color),
-        letterSpacing: 0.5,
+  Widget build(BuildContext context) {
+    final onHero = MHero.on(context);
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: onHero ? color : AppTheme.tint(color),
+        border: Border.all(
+          color: onHero
+              ? Colors.white.withValues(alpha: 0.9)
+              : AppTheme.edge(color),
+          width: size > 60 ? 2.5 : 1.4,
+        ),
+        boxShadow: onHero
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : null,
       ),
-    ),
-  );
+      child: Text(
+        initials,
+        style: TextStyle(
+          fontSize: size * 0.36,
+          fontWeight: FontWeight.w800,
+          color: onHero
+              ? (color.computeLuminance() > 0.55
+                    ? Color.lerp(color, Colors.black, 0.7)
+                    : Colors.white)
+              : AppTheme.onTint(color),
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+/// A small rounded square in a lighter gray with an icon in a color (red
+/// unless given).
+class MIconBadge extends StatelessWidget {
+  const MIconBadge(this.icon, {super.key, this.color, this.size = 36});
+  final IconData icon;
+  final Color? color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MColors(context);
+    final tint = color ?? MBrand.red;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color == null ? c.raised : AppTheme.tint(tint),
+        borderRadius: BorderRadius.circular(size * 0.3),
+        border: Border.all(
+          color: color == null
+              ? c.line
+              : AppTheme.edge(tint).withValues(alpha: 0.6),
+        ),
+      ),
+      child: Icon(
+        icon,
+        size: size * 0.52,
+        color: color == null ? tint : AppTheme.onTint(tint),
+      ),
+    );
+  }
 }
 
 /// A number with a label, for the stat grids.
@@ -455,6 +1109,7 @@ class MStat extends StatelessWidget {
     this.icon,
     this.color,
     this.onTap,
+    this.tone = MTone.card,
   });
 
   final String label;
@@ -463,23 +1118,20 @@ class MStat extends StatelessWidget {
   final IconData? icon;
   final Color? color;
   final VoidCallback? onTap;
+  final MTone tone;
 
   @override
   Widget build(BuildContext context) {
     final c = MColors(context);
-    final accent = color ?? c.title;
     return MCard(
       onTap: onTap,
+      tone: tone,
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              if (icon != null) ...[
-                Icon(icon, size: 16, color: color ?? c.muted),
-                const SizedBox(width: 6),
-              ],
               Expanded(
                 child: Text(
                   label,
@@ -487,11 +1139,17 @@ class MStat extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: c.muted,
                   ),
                 ),
               ),
+              if (icon != null)
+                Icon(
+                  icon,
+                  size: 18,
+                  color: color == null ? c.muted : AppTheme.onTint(color!),
+                ),
             ],
           ),
           const SizedBox(height: 10),
@@ -501,11 +1159,11 @@ class MStat extends StatelessWidget {
             child: Text(
               value,
               style: TextStyle(
-                fontSize: 28,
+                fontSize: 30,
                 height: 1,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
-                color: accent,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.8,
+                color: color == null ? c.title : AppTheme.onTint(color!),
               ),
             ),
           ),
@@ -577,27 +1235,21 @@ class MEmpty extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = MColors(context);
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: compact ? 18 : 48, horizontal: 12),
+    return MCard(
+      padding: EdgeInsets.symmetric(
+        vertical: compact ? 20 : 40,
+        horizontal: 20,
+      ),
       child: Column(
         children: [
-          Container(
-            width: compact ? 46 : 64,
-            height: compact ? 46 : 64,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: c.card,
-              border: Border.all(color: c.line),
-            ),
-            child: Icon(icon, size: compact ? 22 : 28, color: c.muted),
-          ),
-          SizedBox(height: compact ? 10 : 16),
+          MIconBadge(icon, color: c.muted, size: compact ? 42 : 56),
+          SizedBox(height: compact ? 12 : 18),
           Text(
             title,
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: compact ? 15 : 18,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
               color: c.title,
             ),
           ),
@@ -616,7 +1268,8 @@ class MEmpty extends StatelessWidget {
   }
 }
 
-/// Pill-shaped segmented switch (Shifts / Availability / Time off).
+/// Segmented switch (Shifts / Availability / Time off): the picked one as a
+/// solid inverse pill (white on dark, black on light).
 class MSegmented<T> extends StatelessWidget {
   const MSegmented({
     super.key,
@@ -633,11 +1286,18 @@ class MSegmented<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = MColors(context);
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: c.line.withValues(alpha: 0.7)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.line),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: c.light ? 0.06 : 0.3),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -647,19 +1307,13 @@ class MSegmented<T> extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: () => onChanged(v),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
+                  duration: const Duration(milliseconds: 200),
                   curve: Curves.easeOut,
-                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: v == value ? AppTheme.tint(AppTheme.accent) : null,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: v == value
-                          ? AppTheme.edge(AppTheme.accent)
-                          : Colors.transparent,
-                      width: 1.3,
-                    ),
+                    color: v == value ? c.inverse : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     label,
@@ -667,8 +1321,8 @@ class MSegmented<T> extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: v == value ? AppTheme.onTint(AppTheme.accent) : c.muted,
+                      fontWeight: FontWeight.w800,
+                      color: v == value ? c.onInverse : c.muted,
                     ),
                   ),
                 ),
@@ -682,7 +1336,13 @@ class MSegmented<T> extends StatelessWidget {
 
 /// Label / value row for detail lists.
 class MField extends StatelessWidget {
-  const MField(this.label, this.value, {super.key, this.valueWidget, this.last = false});
+  const MField(
+    this.label,
+    this.value, {
+    super.key,
+    this.valueWidget,
+    this.last = false,
+  });
   final String label;
   final String? value;
   final Widget? valueWidget;
@@ -733,7 +1393,12 @@ class MField extends StatelessWidget {
 
 /// Thin progress bar.
 class MProgress extends StatelessWidget {
-  const MProgress({super.key, required this.value, required this.color, this.height = 8});
+  const MProgress({
+    super.key,
+    required this.value,
+    required this.color,
+    this.height = 8,
+  });
   final double value;
   final Color color;
   final double height;
@@ -745,7 +1410,7 @@ class MProgress extends StatelessWidget {
       borderRadius: BorderRadius.circular(height),
       child: Stack(
         children: [
-          Container(height: height, color: c.line.withValues(alpha: 0.6)),
+          Container(height: height, color: c.raised),
           FractionallySizedBox(
             widthFactor: value.clamp(0.0, 1.0).toDouble(),
             child: Container(height: height, color: color),
@@ -756,7 +1421,7 @@ class MProgress extends StatelessWidget {
   }
 }
 
-/// Primary button in the accent color.
+/// Primary button in solid red (or a color of its own).
 class MButton extends StatelessWidget {
   const MButton({
     super.key,
@@ -778,52 +1443,53 @@ class MButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = MColors(context);
-    final accent = color ?? AppTheme.accent;
+    final enabled = onPressed != null && !busy;
+    final fill = secondary ? c.raised : (color ?? MBrand.red);
+    final fg = secondary ? c.title : Colors.white;
     final child = busy
         ? SizedBox(
             width: 18,
             height: 18,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: secondary ? accent : Colors.white,
+              color: secondary ? MBrand.red : Colors.white,
             ),
           )
         : Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 8)],
+              if (icon != null) ...[
+                Icon(icon, size: 18, color: fg),
+                const SizedBox(width: 8),
+              ],
               Flexible(
                 child: Text(
                   label,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: fg,
+                  ),
                 ),
               ),
             ],
           );
-    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
-    if (secondary) {
-      return OutlinedButton(
-        onPressed: busy ? null : onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: c.text,
-          minimumSize: const Size.fromHeight(50),
-          side: BorderSide(color: c.line),
-          shape: shape,
+    final radius = BorderRadius.circular(16);
+    return Opacity(
+      opacity: enabled || busy ? 1 : 0.45,
+      child: Material(
+        color: fill,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: secondary ? BorderSide(color: c.line) : BorderSide.none,
         ),
-        child: child,
-      );
-    }
-    return FilledButton(
-      onPressed: busy ? null : onPressed,
-      style: FilledButton.styleFrom(
-        backgroundColor: accent,
-        foregroundColor: Colors.white,
-        minimumSize: const Size.fromHeight(50),
-        shape: shape,
-        elevation: 0,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: enabled ? onPressed : null,
+          child: SizedBox(height: 52, child: Center(child: child)),
+        ),
       ),
-      child: child,
     );
   }
 }
@@ -836,12 +1502,13 @@ void mSnack(BuildContext context, String message) {
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
 }
 
-/// A sub-page with a back button, pushed over the tabs.
+/// A sub-page with a back button, pushed over the tabs (its bar is the
+/// header's gradient).
 class MSubPage extends StatelessWidget {
   const MSubPage({
     super.key,
@@ -861,36 +1528,147 @@ class MSubPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = MColors(context);
-    return Scaffold(
-      backgroundColor: c.bg,
-      appBar: AppBar(
+    return MobileTheme(
+      child: Scaffold(
         backgroundColor: c.bg,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: true,
-        title: Text(
-          title,
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: c.title,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          centerTitle: true,
+          flexibleSpace: const DecoratedBox(
+            decoration: BoxDecoration(gradient: MBrand.hero),
           ),
+          title: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+          actions: actions,
         ),
-        actions: actions,
-      ),
-      body: ConstrainedPage(child: child),
-      bottomNavigationBar: bottom == null
-          ? null
-          : SafeArea(
-              top: false,
-              child: ConstrainedPage(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                  child: bottom,
+        body: ConstrainedPage(child: child),
+        bottomNavigationBar: bottom == null
+            ? null
+            : SafeArea(
+                top: false,
+                child: ConstrainedPage(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                    child: bottom,
+                  ),
                 ),
               ),
-            ),
+      ),
     );
   }
+}
+
+/// The week's days as tappable tiles, with arrows for other weeks (the
+/// picked day as a solid inverse tile).
+class MDayStrip extends StatelessWidget {
+  const MDayStrip({
+    super.key,
+    required this.weekStart,
+    required this.selected,
+    required this.onSelect,
+    required this.onWeek,
+  });
+
+  final DateTime weekStart;
+  final DateTime selected;
+  final ValueChanged<DateTime> onSelect;
+  final ValueChanged<int> onWeek;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MColors(context);
+    final today = dateOnly(DateTime.now());
+    return MCard(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      child: Row(
+        children: [
+          _StripArrow(icon: Icons.chevron_left, onTap: () => onWeek(-1)),
+          for (var i = 0; i < 7; i++)
+            Expanded(
+              child: Builder(
+                builder: (context) {
+                  final d = addDays(weekStart, i);
+                  final isSel = d == selected;
+                  final isToday = d == today;
+                  return GestureDetector(
+                    onTap: () => onSelect(d),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSel ? c.inverse : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            weekdayShort[d.weekday - 1]
+                                .substring(0, 2)
+                                .toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.6,
+                              color: isSel
+                                  ? c.onInverse.withValues(alpha: 0.7)
+                                  : c.muted,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${d.day}',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                              color: isSel ? c.onInverse : c.title,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Container(
+                            width: 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isToday ? MBrand.red : Colors.transparent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          _StripArrow(icon: Icons.chevron_right, onTap: () => onWeek(1)),
+        ],
+      ),
+    );
+  }
+}
+
+class _StripArrow extends StatelessWidget {
+  const _StripArrow({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    borderRadius: BorderRadius.circular(10),
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 2),
+      child: Icon(icon, color: MColors(context).muted),
+    ),
+  );
 }

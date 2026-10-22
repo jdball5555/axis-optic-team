@@ -61,7 +61,9 @@ class CoverageStrip extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        color: short ? AppTheme.red : theme.textTheme.bodyLarge?.color,
+                        color: short
+                            ? AppTheme.red
+                            : theme.textTheme.bodyLarge?.color,
                       ),
                     ),
             ),

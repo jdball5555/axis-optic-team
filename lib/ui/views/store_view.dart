@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/app_providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/store_settings_model.dart';
+import '../../services/store_takeout_service.dart';
 
 class StoreView extends ConsumerWidget {
   const StoreView({super.key});
@@ -46,23 +47,46 @@ class StoreView extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('App Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.titleLarge?.color)),
+                    Text(
+                      'App Settings',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).textTheme.titleLarge?.color,
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.dark_mode, color: Theme.of(context).textTheme.bodySmall?.color),
+                            Icon(
+                              Icons.dark_mode,
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.color,
+                            ),
                             const SizedBox(width: 16),
-                            Text('Dark Mode', style: TextStyle(fontSize: 16, color: Theme.of(context).textTheme.bodyLarge?.color)),
+                            Text(
+                              'Dark Mode',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Theme.of(
+                                  context,
+                                ).textTheme.bodyLarge?.color,
+                              ),
+                            ),
                           ],
                         ),
                         Switch(
                           value: ref.watch(themeModeProvider) == ThemeMode.dark,
                           onChanged: (val) {
-                            ref.read(themeModeProvider.notifier).state = val ? ThemeMode.dark : ThemeMode.light;
-                            ref.read(brightColorsProvider.notifier).state = null;
+                            ref.read(themeModeProvider.notifier).state = val
+                                ? ThemeMode.dark
+                                : ThemeMode.light;
+                            ref.read(brightColorsProvider.notifier).state =
+                                null;
                           },
                           activeColor: AppTheme.accent,
                         ),
@@ -74,14 +98,29 @@ class StoreView extends ConsumerWidget {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.palette_outlined, color: Theme.of(context).textTheme.bodySmall?.color),
+                            Icon(
+                              Icons.palette_outlined,
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.color,
+                            ),
                             const SizedBox(width: 16),
-                            Text('Bright colors', style: TextStyle(fontSize: 16, color: Theme.of(context).textTheme.bodyLarge?.color)),
+                            Text(
+                              'Bright colors',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Theme.of(
+                                  context,
+                                ).textTheme.bodyLarge?.color,
+                              ),
+                            ),
                           ],
                         ),
                         Switch(
                           value: ref.watch(effectiveBrightColorsProvider),
-                          onChanged: (val) => ref.read(brightColorsProvider.notifier).state = val,
+                          onChanged: (val) =>
+                              ref.read(brightColorsProvider.notifier).state =
+                                  val,
                           activeColor: AppTheme.accent,
                         ),
                       ],
@@ -102,10 +141,13 @@ class StoreView extends ConsumerWidget {
             const SizedBox(height: 8),
             Text(
               'Manage your stores and premium add-on features.',
-              style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color, fontSize: 16),
+              style: TextStyle(
+                color: Theme.of(context).textTheme.bodySmall?.color,
+                fontSize: 16,
+              ),
             ),
             const SizedBox(height: 16),
-            
+
             Expanded(
               child: storesAsync.when(
                 data: (stores) {
@@ -113,8 +155,12 @@ class StoreView extends ConsumerWidget {
                     itemCount: stores.length,
                     itemBuilder: (context, index) {
                       final storeId = stores[index]['id'] as String;
-                      final storeName = stores[index]['name'] as String? ?? 'Untitled Store';
-                      return StoreRow(storeId: storeId, initialStoreName: storeName);
+                      final storeName =
+                          stores[index]['name'] as String? ?? 'Untitled Store';
+                      return StoreRow(
+                        storeId: storeId,
+                        initialStoreName: storeName,
+                      );
                     },
                   );
                 },
@@ -132,7 +178,11 @@ class StoreView extends ConsumerWidget {
 class StoreRow extends ConsumerStatefulWidget {
   final String storeId;
   final String initialStoreName;
-  const StoreRow({super.key, required this.storeId, required this.initialStoreName});
+  const StoreRow({
+    super.key,
+    required this.storeId,
+    required this.initialStoreName,
+  });
 
   @override
   ConsumerState<StoreRow> createState() => _StoreRowState();
@@ -143,32 +193,66 @@ class _StoreRowState extends ConsumerState<StoreRow> {
   bool? _localSchedule;
   bool? _localShift;
   bool _hasUnsavedChanges = false;
-  
+  bool _isExporting = false;
+
+  Future<void> _handleTakeout(String storeDisplayName) async {
+    setState(() => _isExporting = true);
+    try {
+      await StoreTakeoutService.exportStoreTakeout(
+        storeId: widget.storeId,
+        storeName: storeDisplayName,
+      );
+      if (mounted) {
+        setState(() => _isExporting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Takeout data downloaded for "$storeDisplayName"'),
+            backgroundColor: AppTheme.accent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isExporting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to export takeout: $e')),
+        );
+      }
+    }
+  }
+
   void _markUnsaved() {
     setState(() {
       _hasUnsavedChanges = true;
     });
     // Set global unsaved changes provider
-    Future.microtask(() => ref.read(unsavedChangesProvider.notifier).state = true);
+    Future.microtask(
+      () => ref.read(unsavedChangesProvider.notifier).state = true,
+    );
   }
 
   void _saveChanges(String defaultName, dynamic defaultSettings) async {
     try {
       final service = ref.read(firestoreServiceProvider);
-      
+
       if (_localName != null && _localName != defaultName) {
         await service.updateStoreName(widget.storeId, _localName!);
       }
-      
+
       if (_localSchedule != null || _localShift != null) {
         final currentSettings = defaultSettings ?? const StoreSettingsModel();
         final newSettings = currentSettings.copyWith(
-          isScheduleEnabled: _localSchedule ?? currentSettings.isScheduleEnabled,
-          isShiftBoardEnabled: _localShift ?? currentSettings.isShiftBoardEnabled,
+          isScheduleEnabled:
+              _localSchedule ?? currentSettings.isScheduleEnabled,
+          isShiftBoardEnabled:
+              _localShift ?? currentSettings.isShiftBoardEnabled,
         );
-        await service.updateStoreSettingsForSpecificStore(widget.storeId, newSettings);
+        await service.updateStoreSettingsForSpecificStore(
+          widget.storeId,
+          newSettings,
+        );
       }
-      
+
       if (mounted) {
         setState(() {
           _hasUnsavedChanges = false;
@@ -177,25 +261,62 @@ class _StoreRowState extends ConsumerState<StoreRow> {
           _localShift = null;
         });
         ref.read(unsavedChangesProvider.notifier).state = false;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Changes saved successfully!')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Changes saved successfully!')),
+        );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final storeAsync = ref.watch(storeStreamProvider(widget.storeId));
-    final settingsAsync = ref.watch(specificStoreSettingsProvider(widget.storeId));
+    final settingsAsync = ref.watch(
+      specificStoreSettingsProvider(widget.storeId),
+    );
 
     final storeData = storeAsync.valueOrNull;
     final settingsData = settingsAsync.valueOrNull;
 
-    final defaultName = storeData?['name'] as String? ?? widget.initialStoreName;
+    final defaultName =
+        storeData?['name'] as String? ?? widget.initialStoreName;
     final name = _localName ?? defaultName;
-    final isScheduleEnabled = _localSchedule ?? (settingsData?.isScheduleEnabled ?? false);
-    final isShiftEnabled = _localShift ?? (settingsData?.isShiftBoardEnabled ?? false);
+    final isScheduleEnabled =
+        _localSchedule ?? (settingsData?.isScheduleEnabled ?? false);
+    final isShiftEnabled =
+        _localShift ?? (settingsData?.isShiftBoardEnabled ?? false);
+
+    Widget buildAddonSwitch({
+      required String title,
+      required bool isEnabled,
+    }) {
+      final switchWidget = AbsorbPointer(
+        absorbing: true,
+        child: SwitchListTile(
+          title: Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          value: isEnabled,
+          activeTrackColor: AppTheme.accent,
+          onChanged: (_) {},
+        ),
+      );
+      if (isEnabled) {
+        return switchWidget;
+      }
+      return Tooltip(
+        message:
+            'Submit a feedback request to talk to the team about enabling this feature.',
+        waitDuration: const Duration(milliseconds: 100),
+        child: switchWidget,
+      );
+    }
 
     return Card(
       color: Theme.of(context).cardColor,
@@ -217,7 +338,11 @@ class _StoreRowState extends ConsumerState<StoreRow> {
                   child: TextFormField(
                     key: ValueKey('store_name_${widget.storeId}'),
                     initialValue: name,
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).textTheme.titleLarge?.color),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).textTheme.titleLarge?.color,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Store Name',
                       border: OutlineInputBorder(),
@@ -246,30 +371,79 @@ class _StoreRowState extends ConsumerState<StoreRow> {
             Row(
               children: [
                 Expanded(
-                  child: SwitchListTile(
-                    title: const Text('Schedule Add-on', style: TextStyle(fontWeight: FontWeight.bold)),
-                    value: isScheduleEnabled,
-                    activeTrackColor: AppTheme.accent,
-                    onChanged: (val) {
-                      _localSchedule = val;
-                      _markUnsaved();
-                    },
+                  child: buildAddonSwitch(
+                    title: 'Schedule Add-on',
+                    isEnabled: isScheduleEnabled,
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: SwitchListTile(
-                    title: const Text('Shift Board Add-on', style: TextStyle(fontWeight: FontWeight.bold)),
-                    value: isShiftEnabled,
-                    activeTrackColor: AppTheme.accent,
-                    onChanged: (val) {
-                      _localShift = val;
-                      _markUnsaved();
-                    },
+                  child: buildAddonSwitch(
+                    title: 'Shift Board Add-on',
+                    isEnabled: isShiftEnabled,
                   ),
                 ),
               ],
-            )
+            ),
+            const SizedBox(height: 20),
+            Divider(color: Theme.of(context).dividerColor, height: 1),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.cloud_download_outlined,
+                            size: 18,
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Store Data Takeout',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).textTheme.bodyLarge?.color,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Download a complete CSV backup containing all team members, configs, checklists, and portal links.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).textTheme.bodySmall?.color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                OutlinedButton.icon(
+                  onPressed: _isExporting ? null : () => _handleTakeout(name),
+                  icon: _isExporting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.download_rounded, size: 18),
+                  label: Text(_isExporting ? 'Exporting...' : 'Takeout Data'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.accent,
+                    side: BorderSide(color: AppTheme.accent.withValues(alpha: 0.6)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),

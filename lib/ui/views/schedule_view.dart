@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../models/schedule_models.dart';
@@ -65,14 +66,14 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
   // ---------------------------------------------------------------------------
 
   String get _storeId => ref.read(currentStoreIdProvider)!;
+
   /// The schedule being viewed (a store can have several).
   /// (Falls back to the main one if the selected schedule was removed.)
   String get _boardId =>
       _config.boardById(ref.read(selectedBoardProvider(_storeId))).id;
 
-  ScheduleRepository get _repo => ref.read(
-    boardRepositoryProvider((storeId: _storeId, boardId: _boardId)),
-  );
+  ScheduleRepository get _repo =>
+      ref.read(boardRepositoryProvider((storeId: _storeId, boardId: _boardId)));
 
   ScheduleConfig get _config =>
       ref.read(scheduleConfigProvider(_storeId)).valueOrNull ??
@@ -549,14 +550,18 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
   /// picker), named "Board · Position" when there's more than one board.
   List<ShiftPosition> _allBoardPositions() {
     final shiftConfig =
-        ref.read(shiftConfigProvider(_storeId)).valueOrNull ?? const ShiftConfig();
+        ref.read(shiftConfigProvider(_storeId)).valueOrNull ??
+        const ShiftConfig();
     final boards = shiftConfig.boardsFor(_config);
     final seen = <String>{};
     return [
       for (final b in boards)
         for (final p in b.positions)
           if (seen.add(p.id))
-            ShiftPosition(id: p.id, name: boards.length > 1 ? '${b.name} · ${p.name}' : p.name),
+            ShiftPosition(
+              id: p.id,
+              name: boards.length > 1 ? '${b.name} · ${p.name}' : p.name,
+            ),
     ];
   }
 
@@ -569,8 +574,10 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
           .map((t) => t.name)
           .where((n) => n.isNotEmpty)
           .toList(),
-      teamAreas: ref.read(storeSettingsProvider).valueOrNull?.positions ?? const [],
-      designations: ref.read(storeSettingsProvider).valueOrNull?.designations ?? const [],
+      teamAreas:
+          ref.read(storeSettingsProvider).valueOrNull?.positions ?? const [],
+      designations:
+          ref.read(storeSettingsProvider).valueOrNull?.designations ?? const [],
       positions: _allBoardPositions(),
     );
     if (updated == null) return;
@@ -641,7 +648,8 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
       }
     }
     return {
-      for (final e in total.entries) e.key: ((day[e.key] ?? 0) / 60, e.value / 60),
+      for (final e in total.entries)
+        e.key: ((day[e.key] ?? 0) / 60, e.value / 60),
     };
   }
 
@@ -747,11 +755,8 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
   /// Shifts each person worked on schedule [boardId] in the last
   /// [_historyWeeks] weeks before [weekStart] (uid → (weekday, times)), and
   /// how many of those weeks had any shifts (a new store has fewer).
-  Future<({Map<String, List<(int, TimeWindow)>> shifts, int weeks})> _recentShifts(
-    String storeId,
-    String boardId,
-    DateTime weekStart,
-  ) async {
+  Future<({Map<String, List<(int, TimeWindow)>> shifts, int weeks})>
+  _recentShifts(String storeId, String boardId, DateTime weekStart) async {
     final out = <String, List<(int, TimeWindow)>>{};
     final weeks = <String>{};
     try {
@@ -761,7 +766,9 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
       for (final d in days) {
         final weekday = DateTime.parse(d.date).weekday;
         if (d.shifts.isNotEmpty) {
-          weeks.add(dateKey(weekStartFor(DateTime.parse(d.date), _config.weekStart)));
+          weeks.add(
+            dateKey(weekStartFor(DateTime.parse(d.date), _config.weekStart)),
+          );
         }
         for (final s in d.shifts) {
           for (final b in shiftBlocks(s)) {
@@ -784,7 +791,8 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
     bool ask = true,
   }) async {
     final config = _config;
-    if (!config.trainingFlowEnabled || config.trainingDays.isEmpty) return const {};
+    if (!config.trainingFlowEnabled || config.trainingDays.isEmpty)
+      return const {};
     final storeId = _storeId;
     final weekStart = _weekStart;
     final people = {
@@ -793,7 +801,8 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
     }.values.toList();
     final repo = ref.read(scheduleRepositoryProvider(storeId));
     final shiftConfig =
-        ref.read(shiftConfigProvider(storeId)).valueOrNull ?? const ShiftConfig();
+        ref.read(shiftConfigProvider(storeId)).valueOrNull ??
+        const ShiftConfig();
 
     final Map<String, TrainingProgress> saved;
     final worked = <String, Set<String>>{}; // uid → dates worked (any schedule)
@@ -819,7 +828,11 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
     final workedSince = {
       for (final u in people)
         u.id!: (worked[u.id] ?? const <String>{})
-            .where((d) => saved[u.id]?.asOf == null || d.compareTo(saved[u.id]!.asOf!) >= 0)
+            .where(
+              (d) =>
+                  saved[u.id]?.asOf == null ||
+                  d.compareTo(saved[u.id]!.asOf!) >= 0,
+            )
             .length,
     };
     if (!mounted) return null;
@@ -855,8 +868,8 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
     return {
       for (final p in reviewed.values)
         if (!p.notInTraining)
-          if (remainingTrainingSteps(config.trainingDays.length, p.done, 0) case final left
-              when left.isNotEmpty)
+          if (remainingTrainingSteps(config.trainingDays.length, p.done, 0)
+              case final left when left.isNotEmpty)
             p.userId: left,
     };
   }
@@ -867,7 +880,11 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
   }
 
   /// What building [days] would do, for the confirm dialogs.
-  static ({List<ScheduleDay> build, List<ScheduleDay> skip, List<ScheduleDay> replace})
+  static ({
+    List<ScheduleDay> build,
+    List<ScheduleDay> skip,
+    List<ScheduleDay> replace,
+  })
   _buildPlan(List<ScheduleDay> days) {
     final build = days.where((d) => d.hasTemplate).toList();
     return (
@@ -891,7 +908,9 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
       final saved = b.id == currentBoard
           ? _week
           : await ref
-                .read(boardRepositoryProvider((storeId: storeId, boardId: b.id)))
+                .read(
+                  boardRepositoryProvider((storeId: storeId, boardId: b.id)),
+                )
                 .getWeek(weekStart);
       weeks[b.id] = [
         for (var i = 0; i < 7; i++)
@@ -928,7 +947,9 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
                 'replaced. You can undo each day with Ctrl/Cmd+Z.',
         ].join('\n\n');
         if (!await _confirm(
-          plan.skip.isNotEmpty ? 'Only days with a template' : 'Replace shifts?',
+          plan.skip.isNotEmpty
+              ? 'Only days with a template'
+              : 'Replace shifts?',
           body,
           'Continue',
         )) {
@@ -987,7 +1008,9 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
       final saved = b.id == boardId
           ? _week
           : await ref
-                .read(boardRepositoryProvider((storeId: storeId, boardId: b.id)))
+                .read(
+                  boardRepositoryProvider((storeId: storeId, boardId: b.id)),
+                )
                 .getWeek(weekStart);
       weeks[b.id] = [
         for (var i = 0; i < 7; i++)
@@ -1005,7 +1028,11 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
     var before = controller.requestsFor(key);
     if (before.isEmpty) {
       try {
-        before = (await ref.read(scheduleRepositoryProvider(storeId)).getRequests(dateKey(weekStart))).week;
+        before =
+            (await ref
+                    .read(scheduleRepositoryProvider(storeId))
+                    .getRequests(dateKey(weekStart)))
+                .week;
       } catch (_) {}
     }
     final instructions = [...before, request.trim()];
@@ -1041,7 +1068,8 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
     // Read everything from the page now; the build may outlive it.
     final users = _usersById;
     final shiftBoards =
-        (ref.read(shiftConfigProvider(storeId)).valueOrNull ?? const ShiftConfig())
+        (ref.read(shiftConfigProvider(storeId)).valueOrNull ??
+                const ShiftConfig())
             .boardsFor(config);
     // The schedule as it is now (chat changes keep as much as they can).
     Map<String, List<(String, TimeWindow)>> keepOf(String boardId) {
@@ -1083,7 +1111,8 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
         if (entry.key == boardId) continue;
         // A schedule still waiting to be rebuilt in this run: its template
         // days are about to be replaced, so they don't count.
-        final pending = boards.contains(entry.key) && !built.contains(entry.key);
+        final pending =
+            boards.contains(entry.key) && !built.contains(entry.key);
         for (final d in entry.value) {
           if (pending && d.hasTemplate) continue;
           for (final s in d.shifts) {
@@ -1098,7 +1127,9 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
     // Each day as it was before this run (for undo), the first time it's saved.
     final before = <String, (ScheduleRepository, ScheduleDay)>{};
     Future<void> save(String boardId, ScheduleDay day, ScheduleDay old) async {
-      final repo = ref.read(boardRepositoryProvider((storeId: storeId, boardId: boardId)));
+      final repo = ref.read(
+        boardRepositoryProvider((storeId: storeId, boardId: boardId)),
+      );
       before.putIfAbsent('$boardId|${day.date}', () => (repo, old));
       await repo.saveDay(day);
     }
@@ -1117,11 +1148,13 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
         fillBusy(boardId);
         final ctx = contexts[boardId]!;
         final old = {for (final d in weeks[boardId]!) d.date: d};
-        final result = await AiScheduler().buildWeek(ctx, users: users, log: log);
+        final result = await AiScheduler().buildWeek(
+          ctx,
+          users: users,
+          log: log,
+        );
         built.add(boardId);
-        weeks[boardId] = [
-          for (final d in weeks[boardId]!) result[d.date] ?? d,
-        ];
+        weeks[boardId] = [for (final d in weeks[boardId]!) result[d.date] ?? d];
         for (final date in result.keys.toList()..sort()) {
           final was = old[date] ?? ScheduleDay.empty(date);
           var day = result[date]!;
@@ -1146,13 +1179,15 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
       // Shift boards that combine schedules: deploy their positions across
       // all of the board's shifts together.
       for (final sb in shiftBoards) {
-        if (sb.scheduleIds.length < 2 || !sb.scheduleIds.any(built.contains)) continue;
+        if (sb.scheduleIds.length < 2 || !sb.scheduleIds.any(built.contains))
+          continue;
         var days = 0;
         for (var i = 0; i < 7; i++) {
           final date = dateKey(addDays(weekStart, i));
           final sources = {
             for (final sid in sb.scheduleIds)
-              sid: (weeks[sid] ?? const <ScheduleDay>[])
+              sid:
+                  (weeks[sid] ?? const <ScheduleDay>[])
                       .where((d) => d.date == date)
                       .firstOrNull ??
                   ScheduleDay.empty(date),
@@ -1168,7 +1203,9 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
             m.origin,
           );
           for (final e in parts.entries) {
-            if (jsonEncode(e.value.toJson()) == jsonEncode(sources[e.key]!.toJson())) continue;
+            if (jsonEncode(e.value.toJson()) ==
+                jsonEncode(sources[e.key]!.toJson()))
+              continue;
             await save(e.key, e.value, sources[e.key]!);
             weeks[e.key] = [
               for (final d in weeks[e.key] ?? const <ScheduleDay>[])
@@ -1180,7 +1217,8 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
         if (days > 0) {
           log((
             kind: AiLineKind.success,
-            text: 'Deployed positions on the ${sb.name} board (${sb.scheduleIds.length} schedules together).',
+            text:
+                'Deployed positions on the ${sb.name} board (${sb.scheduleIds.length} schedules together).',
           ));
         }
       }
@@ -1194,12 +1232,15 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
 
     if (before.isNotEmpty) {
       final restore = before.values.toList();
-      controller.setUndo(request == null ? 'the AI build' : 'that change', () async {
-        for (final (repo, day) in restore) {
-          await repo.saveDay(day);
-        }
-        if (mounted) setState(() => _undo.clear());
-      });
+      controller.setUndo(
+        request == null ? 'the AI build' : 'that change',
+        () async {
+          for (final (repo, day) in restore) {
+            await repo.saveDay(day);
+          }
+          if (mounted) setState(() => _undo.clear());
+        },
+      );
     }
   }
 
@@ -1229,7 +1270,10 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
         if (_buildPlan(weeks[b.id]!).build.isNotEmpty) b.id,
     };
     final selected = <String>{
-      if (buildable.contains(currentBoard)) currentBoard else ...buildable.take(1),
+      if (buildable.contains(currentBoard))
+        currentBoard
+      else
+        ...buildable.take(1),
     };
     final ws = _weekStart;
     return showDialog<List<String>>(
@@ -1545,9 +1589,14 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
                                   weekLabel:
                                       '${monthShort[weekStart.month - 1]} ${weekStart.day}',
                                   onBuild: _aiBuild,
-                                  undoLabel: ref.watch(aiBuildProvider).undoLabel,
+                                  undoLabel: ref
+                                      .watch(aiBuildProvider)
+                                      .undoLabel,
                                   onUndo: _confirmAiUndo,
-                                  onSend: _week.values.any((d) => d.shifts.isNotEmpty)
+                                  onSend:
+                                      _week.values.any(
+                                        (d) => d.shifts.isNotEmpty,
+                                      )
                                       ? _aiChange
                                       : null,
                                   onClear: () => ref
@@ -1716,17 +1765,18 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
         const SizedBox(width: 8),
         _buildPostButton(week),
         const SizedBox(width: 6),
-        IconButton(
-          tooltip: 'Undo (Ctrl/Cmd+Z)',
-          visualDensity: VisualDensity.compact,
-          onPressed: undoCount == 0 ? null : _undoLast,
-          icon: const Icon(Icons.undo),
-        ),
+        if (undoCount > 0)
+          IconButton(
+            tooltip: 'Undo (Ctrl/Cmd+Z)',
+            visualDensity: VisualDensity.compact,
+            onPressed: _undoLast,
+            icon: const Icon(Icons.undo),
+          ),
         IconButton(
           tooltip: 'Templates',
           visualDensity: VisualDensity.compact,
           onPressed: _openTemplates,
-          icon: const Icon(Icons.view_timeline_outlined),
+          icon: const Icon(Icons.table_chart),
         ),
         IconButton(
           tooltip: 'Schedule settings',
@@ -1742,7 +1792,7 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
             tooltip: 'Time-off requests',
             visualDensity: VisualDensity.compact,
             onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-            icon: const Icon(Icons.event_busy_outlined),
+            icon: const Icon(Icons.event_busy),
           ),
         ),
       ],
@@ -1809,7 +1859,7 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
                   color: Colors.white,
                 ),
               )
-            : const Icon(Icons.campaign_outlined, size: 18),
+            : const Icon(Icons.campaign, size: 18),
         label: Text(label),
       ),
     );
@@ -1852,12 +1902,9 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
                 value: t.id,
                 child: Row(
                   children: [
-                    Icon(
-                      t.id == day.templateId
-                          ? Icons.check
-                          : Icons.view_timeline_outlined,
-                      size: 16,
-                    ),
+                    t.id == day.templateId
+                        ? const Icon(Icons.check, size: 16)
+                        : const Icon(Icons.table_chart, size: 16),
                     const SizedBox(width: 8),
                     Expanded(child: Text(t.name)),
                     Text(
@@ -1894,7 +1941,7 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.view_timeline_outlined, size: 16),
+                const Icon(Icons.table_chart, size: 16),
                 const SizedBox(width: 8),
                 Text(
                   day.templateName ?? 'Pick a template',
@@ -1961,7 +2008,7 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
         const SizedBox(width: 10),
         _PanelToggle(
           tooltip: 'AI scheduler',
-          icon: Icons.terminal,
+          icon: const Icon(Icons.auto_awesome_rounded),
           count: 0,
           active: _showAi,
           onPressed: () => setState(() {
@@ -1974,7 +2021,7 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
         ),
         _PanelToggle(
           tooltip: 'Who can work (drag onto the schedule)',
-          icon: Icons.person_add_alt_outlined,
+          icon: const Icon(Icons.person_add),
           count: availableCount,
           active: _showAvailable,
           onPressed: () => setState(() {
@@ -1997,7 +2044,7 @@ class _ScheduleViewState extends ConsumerState<ScheduleView> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.view_timeline_outlined,
+              Icons.table_chart,
               size: 52,
               color: theme.textTheme.bodySmall?.color,
             ),
@@ -2442,12 +2489,25 @@ class _ShiftPanel extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  personName(user),
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                    color: theme.textTheme.titleLarge?.color,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () {
+                      if (user?.id != null) {
+                        context.go('/member/${user!.id}?from=/schedule');
+                      }
+                    },
+                    child: Text(
+                      personName(user),
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: theme.textTheme.titleLarge?.color,
+                        decoration: TextDecoration.underline,
+                        decorationColor: theme.textTheme.titleLarge?.color
+                            ?.withValues(alpha: 0.3),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -2536,10 +2596,7 @@ class _ShiftPanel extends StatelessWidget {
                     Expanded(
                       child: Text(
                         w,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.accent,
-                        ),
+                        style: TextStyle(fontSize: 12, color: AppTheme.accent),
                       ),
                     ),
                   ],
@@ -2658,7 +2715,7 @@ class _PieceTile extends StatelessWidget {
 /// Icon button that opens / closes the side panel, with a count badge.
 class _PanelToggle extends StatelessWidget {
   final String tooltip;
-  final IconData icon;
+  final Widget icon;
   final int count;
   final bool active;
   final VoidCallback onPressed;
@@ -2688,7 +2745,7 @@ class _PanelToggle extends StatelessWidget {
         ),
         color: active ? AppTheme.accent2 : null,
         onPressed: onPressed,
-        icon: Icon(icon),
+        icon: icon,
       ),
     );
   }
@@ -2881,12 +2938,9 @@ class _WhoCanWorkPanelState extends State<_WhoCanWorkPanel> {
                 const SizedBox(height: 16),
                 OutlinedButton.icon(
                   onPressed: () => setState(() => _showTimeOff = !_showTimeOff),
-                  icon: Icon(
-                    _showTimeOff
-                        ? Icons.expand_less
-                        : Icons.event_busy_outlined,
-                    size: 18,
-                  ),
+                  icon: _showTimeOff
+                      ? const Icon(Icons.expand_less, size: 18)
+                      : const Icon(Icons.event_busy, size: 18),
                   label: Text(
                     _showTimeOff
                         ? 'Hide time off'
@@ -2911,11 +2965,7 @@ class _WhoCanWorkPanelState extends State<_WhoCanWorkPanel> {
                       ),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.event_busy,
-                            size: 14,
-                            color: AppTheme.red,
-                          ),
+                          Icon(Icons.event_busy, size: 14, color: AppTheme.red),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
@@ -2992,13 +3042,26 @@ class _AvailableTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  personName(user),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: theme.textTheme.bodyLarge?.color,
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () {
+                      if (user.id != null) {
+                        context.go('/member/${user.id}?from=/schedule');
+                      }
+                    },
+                    child: Text(
+                      personName(user),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: theme.textTheme.bodyLarge?.color,
+                        decoration: TextDecoration.underline,
+                        decorationColor: theme.textTheme.bodyLarge?.color
+                            ?.withValues(alpha: 0.3),
+                      ),
+                    ),
                   ),
                 ),
                 Text.rich(

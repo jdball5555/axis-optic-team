@@ -27,14 +27,18 @@ class TeamMemberDashboardView extends ConsumerWidget {
                 context.go('/auth');
               }
             },
-          )
+          ),
         ],
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.calendar_month, size: 64, color: Theme.of(context).textTheme.bodySmall?.color),
+            Icon(
+              Icons.calendar_month,
+              size: 64,
+              color: Theme.of(context).textTheme.bodySmall?.color,
+            ),
             const SizedBox(height: 16),
             Text(
               'Welcome, ${currentUser?['first_name'] ?? 'Team Member'}!',
@@ -47,7 +51,9 @@ class TeamMemberDashboardView extends ConsumerWidget {
             const SizedBox(height: 8),
             Text(
               'Your schedule will appear here soon.',
-              style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color),
+              style: TextStyle(
+                color: Theme.of(context).textTheme.bodySmall?.color,
+              ),
             ),
           ],
         ),

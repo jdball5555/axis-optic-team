@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../models/schedule_models.dart';
@@ -13,7 +14,126 @@ import '../../services/schedule_repository.dart';
 import '../views/schedule/position_ops.dart';
 import '../views/schedule/schedule_common.dart';
 import '../views/schedule/training_flow.dart';
+import 'mobile_data.dart';
+import 'mobile_shell.dart';
 import 'mobile_ui.dart';
+
+/// The Shift board's own page (Roster → Shift board).
+class ShiftBoardPage extends ConsumerStatefulWidget {
+  const ShiftBoardPage({super.key, this.initialDate});
+  final DateTime? initialDate;
+
+  @override
+  ConsumerState<ShiftBoardPage> createState() => _ShiftBoardPageState();
+}
+
+class _ShiftBoardPageState extends ConsumerState<ShiftBoardPage> {
+  late DateTime _date = dateOnly(widget.initialDate ?? DateTime.now());
+
+  void _back() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go(MobileTab.roster.path);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MColors(context);
+    final access = ref.watch(mobileAccessProvider);
+    final storeId = ref.watch(currentStoreIdProvider);
+    final today = dateOnly(DateTime.now());
+    final config = storeId == null
+        ? const ScheduleConfig()
+        : ref.watch(scheduleConfigProvider(storeId)).valueOrNull ??
+              const ScheduleConfig();
+
+    return ConstrainedPage(
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          12,
+          MediaQuery.paddingOf(context).top + 6,
+          16,
+          28,
+        ),
+        children: [
+          // Compact header: back, title + date, Today.
+          Row(
+            children: [
+              IconButton(
+                onPressed: _back,
+                icon: Icon(Icons.arrow_back_rounded, color: c.title),
+                tooltip: 'Roster',
+              ),
+              const SizedBox(width: 2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Shift board',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                        color: c.title,
+                      ),
+                    ),
+                    Text(
+                      longDate(_date),
+                      style: TextStyle(fontSize: 13, color: c.muted),
+                    ),
+                  ],
+                ),
+              ),
+              if (_date != today)
+                TextButton(
+                  onPressed: () => setState(() => _date = today),
+                  child: Text(
+                    'Today',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: MBrand.red,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: MDayStrip(
+              weekStart: weekStartFor(_date, config.weekStart),
+              selected: _date,
+              onSelect: (d) => setState(() => _date = d),
+              onWeek: (d) => setState(() => _date = addDays(_date, 7 * d)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: storeId == null || !access.seeShiftBoard
+                ? const MEmpty(
+                    icon: Icons.lock_outline,
+                    title: 'No access',
+                    message: 'Ask a leader for Shift board access.',
+                    compact: true,
+                  )
+                : ShiftBoardMobile(
+                    storeId: storeId,
+                    date: _date,
+                    canEdit: access.editShiftBoard,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// The Shift board on a phone: pick an hour, see every position, and (with
 /// access) long-press someone and drag them onto a position, or tap them to
@@ -108,7 +228,8 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
       );
       if (weekAsync.isLoading && !weekAsync.hasValue) loading = true;
       sources[sid] =
-          weekAsync.valueOrNull?[dateKey(date)] ?? ScheduleDay.empty(dateKey(date));
+          weekAsync.valueOrNull?[dateKey(date)] ??
+          ScheduleDay.empty(dateKey(date));
     }
     final merged = mergeBoardDay(dateKey(date), sources);
     _sources = sources;
@@ -116,7 +237,8 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
     final day = merged.day;
 
     final users = {
-      for (final u in ref.watch(usersStreamProvider).valueOrNull ?? const <UserModel>[])
+      for (final u
+          in ref.watch(usersStreamProvider).valueOrNull ?? const <UserModel>[])
         if (u.id != null) u.id!: u,
     };
     final settings = ref.watch(storeSettingsProvider).valueOrNull;
@@ -152,7 +274,12 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
                   selectedId: board.id,
                   tooltip: 'Switch board',
                   onChanged: (id) =>
-                      ref.read(selectedShiftBoardProvider(storeId).notifier).state = id,
+                      ref
+                              .read(
+                                selectedShiftBoardProvider(storeId).notifier,
+                              )
+                              .state =
+                          id,
                 ),
               const Spacer(),
               if (widget.canEdit && positions.isNotEmpty)
@@ -161,9 +288,11 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
                       ? null
                       : () => _autoFill(day, positions, steps),
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.accent,
+                    backgroundColor: MBrand.red,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   icon: const Icon(Icons.auto_awesome, size: 18),
                   label: const Text('Auto-fill'),
@@ -186,7 +315,8 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
           const MEmpty(
             icon: Icons.grid_view_outlined,
             title: 'No positions yet',
-            message: 'Set up this board\'s positions in Shift board settings on the desktop app.',
+            message:
+                'Set up this board\'s positions in Shift board settings on the desktop app.',
             compact: true,
           ),
         ],
@@ -197,9 +327,10 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
         children: [
           ...header,
           MEmpty(
-            icon: Icons.event_busy_outlined,
+            icon: Icons.event_busy,
             title: 'No one scheduled',
-            message: 'Nothing is on the schedule for ${weekdayNames[date.weekday - 1]}.',
+            message:
+                'Nothing is on the schedule for ${weekdayNames[date.weekday - 1]}.',
             compact: true,
           ),
         ],
@@ -225,7 +356,8 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
     final positionIds = {for (final p in positions) p.id};
     final working = day.shifts.where((s) => refMinute(s) != null).toList()
       ..sort((a, b) => a.start.compareTo(b.start));
-    bool placedNow(Shift s) => positionIds.contains(positionAt(s, refMinute(s) ?? at));
+    bool placedNow(Shift s) =>
+        positionIds.contains(positionAt(s, refMinute(s) ?? at));
     final unplaced = working.where((s) => !placedNow(s)).toList();
 
     String? trainingFor(String? uid) {
@@ -238,7 +370,10 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
       if (shift == null) return;
       final from = refMinute(shift) ?? at;
       if (position != null && !fitsPositionFrom(day, shift, position, from)) {
-        mSnack(context, '${position.name} is taken from ${formatMinutes(from)} on.');
+        mSnack(
+          context,
+          '${position.name} is taken from ${formatMinutes(from)} on.',
+        );
         return;
       }
       HapticFeedback.selectionClick();
@@ -268,7 +403,11 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
                   padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
                   child: Text(
                     personName(users[s.userId]),
-                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: cc.title),
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                      color: cc.title,
+                    ),
                   ),
                 ),
                 Padding(
@@ -280,11 +419,19 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
                 ),
                 if (current != null && positionIds.contains(current))
                   ListTile(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    leading: Icon(Icons.remove_circle_outline, color: AppTheme.red),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    leading: Icon(
+                      Icons.remove_circle_outline,
+                      color: AppTheme.red,
+                    ),
                     title: Text(
                       'Take off ${shiftConfig.positionById(current)?.name ?? 'position'}',
-                      style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.red),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.red,
+                      ),
                     ),
                     onTap: () => Navigator.pop(ctx, ''),
                   ),
@@ -296,17 +443,28 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
                       final fits = isHere || fitsPositionFrom(day, s, p, from);
                       return ListTile(
                         enabled: fits && !isHere,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         leading: _RankBadge(rank: i + 1),
                         title: Text(
                           p.name.isEmpty ? 'Untitled' : p.name,
-                          style: TextStyle(fontWeight: FontWeight.w600, color: cc.text),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: cc.text,
+                          ),
                         ),
                         subtitle: isHere
-                            ? Text('Here now', style: TextStyle(color: AppTheme.green))
+                            ? Text(
+                                'Here now',
+                                style: TextStyle(color: AppTheme.green),
+                              )
                             : fits
                             ? null
-                            : Text('Taken then', style: TextStyle(color: cc.muted)),
+                            : Text(
+                                'Taken then',
+                                style: TextStyle(color: cc.muted),
+                              ),
                         onTap: () => Navigator.pop(ctx, p.id),
                       );
                     },
@@ -325,34 +483,26 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
       }
     }
 
-    Widget person(Shift s, {bool compact = false, List<PositionSegment>? segments}) {
-      final card = _PersonChip(
+    Widget person(Shift s, {List<PositionSegment>? segments}) {
+      final training = trainingFor(s.userId) ?? trainingFor(s.traineeId);
+      _PersonChip chip({bool dragging = false}) => _PersonChip(
         shift: s,
         user: users[s.userId],
         trainee: s.isTraining ? users[s.traineeId] : null,
         color: colorForUser(users[s.userId], settings),
-        training: trainingFor(s.userId) ?? trainingFor(s.traineeId),
+        training: dragging ? null : training,
         segments: segments,
-        compact: compact,
-        onTap: widget.canEdit ? () => choose(s) : null,
+        dragging: dragging,
+        onTap: widget.canEdit && !dragging ? () => choose(s) : null,
       );
+      final card = chip();
       if (!widget.canEdit) return card;
       return LongPressDraggable<String>(
         data: s.id,
         hapticFeedbackOnStart: true,
         feedback: Material(
           color: Colors.transparent,
-          child: SizedBox(
-            width: 260,
-            child: _PersonChip(
-              shift: s,
-              user: users[s.userId],
-              trainee: s.isTraining ? users[s.traineeId] : null,
-              color: colorForUser(users[s.userId], settings),
-              training: null,
-              dragging: true,
-            ),
-          ),
+          child: chip(dragging: true),
         ),
         childWhenDragging: Opacity(opacity: 0.35, child: card),
         child: card,
@@ -365,15 +515,17 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
         ...header,
         // Hour picker.
         SizedBox(
-          height: 58,
+          height: 46,
           child: ListView.separated(
             controller: _hourScroll,
             scrollDirection: Axis.horizontal,
             itemCount: hours.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 6),
+            separatorBuilder: (_, _) => const SizedBox(width: 5),
             itemBuilder: (context, i) {
               final h = hours[i];
-              final n = day.shifts.where((s) => workingMinuteInHour(s, h) != null).length;
+              final n = day.shifts
+                  .where((s) => workingMinuteInHour(s, h) != null)
+                  .length;
               final placed = day.shifts.where((s) {
                 final m = workingMinuteInHour(s, h);
                 return m != null && positionIds.contains(positionAt(s, m));
@@ -383,12 +535,14 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
                 onTap: () => setState(() => _hour = h),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  width: 62,
+                  width: 52,
                   decoration: BoxDecoration(
-                    color: sel ? AppTheme.tint(AppTheme.accent) : c.card,
-                    borderRadius: BorderRadius.circular(12),
+                    color: sel ? AppTheme.tint(MBrand.red) : c.card,
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: sel ? AppTheme.edge(AppTheme.accent) : c.line.withValues(alpha: 0.7),
+                      color: sel
+                          ? AppTheme.edge(MBrand.red)
+                          : c.line.withValues(alpha: 0.7),
                       width: sel ? 1.4 : 1,
                     ),
                   ),
@@ -398,18 +552,19 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
                       Text(
                         formatMinutes(h, compact: true),
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w800,
-                          color: sel ? AppTheme.onTint(AppTheme.accent) : c.title,
+                          color: sel ? AppTheme.onTint(MBrand.red) : c.title,
                         ),
                       ),
-                      const SizedBox(height: 2),
                       Text(
                         n == 0 ? '–' : '$placed/$n',
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10.5,
                           fontWeight: FontWeight.w700,
-                          color: n > 0 && placed == n ? AppTheme.green : c.muted,
+                          color: n > 0 && placed == n
+                              ? AppTheme.green
+                              : c.muted,
                         ),
                       ),
                     ],
@@ -419,182 +574,235 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
             },
           ),
         ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            MPill('${working.length} working at ${hourLabel(at)}', color: AppTheme.teal, large: true),
-            if (working.isNotEmpty)
-              MPill(
-                unplaced.isEmpty ? 'Everyone placed' : '${unplaced.length} not placed',
-                color: unplaced.isEmpty ? AppTheme.green : AppTheme.accent,
-                large: true,
+        const SizedBox(height: 10),
+        // One summary line.
+        Text.rich(
+          TextSpan(
+            style: TextStyle(fontSize: 13, color: c.muted),
+            children: [
+              TextSpan(
+                text: '${working.length} working at ${hourLabel(at)}',
+                style: TextStyle(fontWeight: FontWeight.w700, color: c.text),
               ),
-            if (!day.isPosted) MPill('Not posted', color: AppTheme.orange, large: true),
-          ],
+              if (working.isNotEmpty)
+                TextSpan(
+                  text: unplaced.isEmpty
+                      ? '  ·  everyone placed'
+                      : '  ·  ${unplaced.length} not placed',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: unplaced.isEmpty
+                        ? AppTheme.green
+                        : AppTheme.onTint(MBrand.red),
+                  ),
+                ),
+              if (!day.isPosted)
+                TextSpan(
+                  text: '  ·  not posted',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.orange,
+                  ),
+                ),
+            ],
+          ),
         ),
+        const SizedBox(height: 10),
 
         // Not placed: drop here to take someone off their position.
-        const MSection('Not placed'),
         DragTarget<String>(
           onWillAcceptWithDetails: (d) =>
               widget.canEdit && !unplaced.any((s) => s.id == d.data),
           onAcceptWithDetails: (d) => place(d.data, null),
-          builder: (context, candidate, _) => AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: candidate.isNotEmpty ? AppTheme.tint(AppTheme.teal) : c.card,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: candidate.isNotEmpty ? AppTheme.edge(AppTheme.teal) : c.line.withValues(alpha: 0.7),
-                width: candidate.isNotEmpty ? 1.5 : 1,
+          builder: (context, candidate, _) {
+            if (unplaced.isEmpty && candidate.isEmpty)
+              return const SizedBox.shrink();
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              decoration: BoxDecoration(
+                color: candidate.isNotEmpty
+                    ? AppTheme.tint(AppTheme.teal)
+                    : AppTheme.tint(MBrand.red).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: candidate.isNotEmpty
+                      ? AppTheme.edge(AppTheme.teal)
+                      : AppTheme.edge(MBrand.red).withValues(alpha: 0.45),
+                ),
               ),
-            ),
-            child: unplaced.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                    child: Text(
-                      candidate.isNotEmpty
-                          ? 'Drop to take them off their position'
-                          : working.isEmpty
-                          ? 'No one is working this hour.'
-                          : 'Everyone has a position.',
-                      style: TextStyle(color: c.muted),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    candidate.isNotEmpty
+                        ? 'DROP TO TAKE THEM OFF THEIR POSITION'
+                        : 'NOT PLACED',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1,
+                      color: c.muted,
                     ),
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final s in unplaced)
-                        Padding(
-                          padding: EdgeInsets.only(bottom: s == unplaced.last ? 0 : 8),
-                          child: person(s),
-                        ),
-                    ],
                   ),
-          ),
+                  if (unplaced.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [for (final s in unplaced) person(s)],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
         ),
-        if (widget.canEdit && unplaced.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8, left: 4),
-            child: Text(
-              'Tap someone to pick a position, or press and hold to drag them.',
-              style: TextStyle(fontSize: 12.5, color: c.muted),
-            ),
-          ),
 
-        const MSection('Positions'),
-        for (var i = 0; i < positions.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Builder(
-              builder: (context) {
-                final p = positions[i];
-                final here = day.shifts.where((s) {
-                  final m = refMinute(s);
-                  return m != null && positionAt(s, m) == p.id;
-                }).toList()
-                  ..sort((a, b) => a.start.compareTo(b.start));
-                final coverage = positionCoverage(day, p.id, dayStart, dayEnd);
-                bool canTake(Shift s) {
-                  final m = refMinute(s);
-                  return m != null && positionAt(s, m) != p.id && fitsPositionFrom(day, s, p, m);
-                }
+        // Positions: one compact card, a row each.
+        MCard(
+          padding: EdgeInsets.zero,
+          radius: 14,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < positions.length; i++)
+                Builder(
+                  builder: (context) {
+                    final p = positions[i];
+                    final here = day.shifts.where((s) {
+                      final m = refMinute(s);
+                      return m != null && positionAt(s, m) == p.id;
+                    }).toList()..sort((a, b) => a.start.compareTo(b.start));
+                    final coverage = positionCoverage(
+                      day,
+                      p.id,
+                      dayStart,
+                      dayEnd,
+                    );
+                    bool canTake(Shift s) {
+                      final m = refMinute(s);
+                      return m != null &&
+                          positionAt(s, m) != p.id &&
+                          fitsPositionFrom(day, s, p, m);
+                    }
 
-                return DragTarget<String>(
-                  onWillAcceptWithDetails: (d) {
-                    final s = day.shiftById(d.data);
-                    return widget.canEdit && s != null && canTake(s);
-                  },
-                  onAcceptWithDetails: (d) => place(d.data, p),
-                  builder: (context, candidate, rejected) {
-                    final accent = candidate.isNotEmpty
-                        ? AppTheme.green
-                        : rejected.isNotEmpty
-                        ? AppTheme.red
-                        : null;
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 120),
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                      decoration: BoxDecoration(
-                        color: accent == null ? c.card : Color.alphaBlend(AppTheme.tint(accent), c.card),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: accent ?? c.line.withValues(alpha: 0.7),
-                          width: accent != null ? 1.5 : 1,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
+                    return DragTarget<String>(
+                      onWillAcceptWithDetails: (d) {
+                        final s = day.shiftById(d.data);
+                        return widget.canEdit && s != null && canTake(s);
+                      },
+                      onAcceptWithDetails: (d) => place(d.data, p),
+                      builder: (context, candidate, rejected) {
+                        final accent = candidate.isNotEmpty
+                            ? AppTheme.green
+                            : rejected.isNotEmpty
+                            ? AppTheme.red
+                            : null;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 120),
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                          decoration: BoxDecoration(
+                            color: accent == null
+                                ? null
+                                : AppTheme.tint(accent),
+                            border: Border(
+                              bottom: i == positions.length - 1
+                                  ? BorderSide.none
+                                  : BorderSide(
+                                      color: c.line.withValues(alpha: 0.5),
+                                    ),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               _RankBadge(rank: i + 1),
                               const SizedBox(width: 10),
                               Expanded(
-                                child: Text(
-                                  p.name.isEmpty ? 'Untitled' : p.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 15.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: c.title,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                here.isEmpty ? 'Open' : 'Filled',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: here.isEmpty ? c.muted : AppTheme.green,
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            p.name.isEmpty
+                                                ? 'Untitled'
+                                                : p.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w800,
+                                              color: c.title,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        SizedBox(
+                                          width: 72,
+                                          child: _Coverage(
+                                            coverage: coverage,
+                                            start: dayStart,
+                                            end: dayEnd,
+                                            marker: at,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    if (here.isEmpty)
+                                      Text(
+                                        rejected.isNotEmpty
+                                            ? 'Taken then'
+                                            : candidate.isNotEmpty
+                                            ? 'Drop to place them here'
+                                            : widget.canEdit
+                                            ? 'Open · drop someone here'
+                                            : 'Open',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          color: rejected.isNotEmpty
+                                              ? AppTheme.red
+                                              : candidate.isNotEmpty
+                                              ? AppTheme.onTint(AppTheme.green)
+                                              : c.muted,
+                                        ),
+                                      )
+                                    else
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 6,
+                                        children: [
+                                          for (final s in here)
+                                            person(
+                                              s,
+                                              segments: segmentsOn(s, p.id),
+                                            ),
+                                        ],
+                                      ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          _Coverage(
-                            coverage: coverage,
-                            start: dayStart,
-                            end: dayEnd,
-                            marker: at,
-                          ),
-                          const SizedBox(height: 10),
-                          if (here.isEmpty)
-                            Container(
-                              height: 44,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: c.line.withValues(alpha: 0.6)),
-                                color: c.line.withValues(alpha: 0.12),
-                              ),
-                              child: Text(
-                                rejected.isNotEmpty
-                                    ? 'Taken then'
-                                    : widget.canEdit
-                                    ? 'Drop someone here'
-                                    : 'No one',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  color: rejected.isNotEmpty ? AppTheme.red : c.muted,
-                                ),
-                              ),
-                            ),
-                          for (final s in here)
-                            Padding(
-                              padding: EdgeInsets.only(bottom: s == here.last ? 0 : 8),
-                              child: person(s, compact: true, segments: segmentsOn(s, p.id)),
-                            ),
-                        ],
-                      ),
+                        );
+                      },
                     );
                   },
-                );
-              },
+                ),
+            ],
+          ),
+        ),
+        if (widget.canEdit)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
+            child: Text(
+              'Tap someone to pick a position, or press and hold to drag them.',
+              style: TextStyle(fontSize: 12, color: c.muted),
             ),
           ),
       ],
@@ -630,8 +838,11 @@ class _ShiftBoardMobileState extends ConsumerState<ShiftBoardMobile> {
       );
       if (ok != true) return;
     }
-    await _save(deployPositions(day, positions, pinned: trainingPins(day, steps)));
-    if (mounted) mSnack(context, 'Positions filled by priority for the whole day.');
+    await _save(
+      deployPositions(day, positions, pinned: trainingPins(day, steps)),
+    );
+    if (mounted)
+      mSnack(context, 'Positions filled by priority for the whole day.');
   }
 }
 
@@ -641,8 +852,8 @@ class _RankBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    width: 26,
-    height: 26,
+    width: 22,
+    height: 22,
     alignment: Alignment.center,
     decoration: BoxDecoration(
       color: AppTheme.tint(AppTheme.teal),
@@ -659,7 +870,7 @@ class _RankBadge extends StatelessWidget {
   );
 }
 
-/// A working person on the board.
+/// A working person on the board: a small chip (color, name, times).
 class _PersonChip extends StatelessWidget {
   const _PersonChip({
     required this.shift,
@@ -668,7 +879,6 @@ class _PersonChip extends StatelessWidget {
     required this.color,
     required this.training,
     this.segments,
-    this.compact = false,
     this.dragging = false,
     this.onTap,
   });
@@ -679,93 +889,90 @@ class _PersonChip extends StatelessWidget {
   final Color color;
   final String? training;
   final List<PositionSegment>? segments;
-  final bool compact;
   final bool dragging;
   final VoidCallback? onTap;
+
+  static String _range(int a, int b) =>
+      '${formatMinutes(a, compact: true)}–${formatMinutes(b, compact: true)}';
 
   @override
   Widget build(BuildContext context) {
     final c = MColors(context);
     final seg = segments;
     final times = seg == null || seg.isEmpty
-        ? formatRange(shift.start, shift.end)
-        : seg.map((p) => formatRange(p.start, p.end)).join(', ');
-    return Material(
-      color: dragging ? c.card : c.bg,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: dragging ? color : c.line.withValues(alpha: 0.8)),
-      ),
-      elevation: dragging ? 8 : 0,
-      shadowColor: Colors.black,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(width: 5, color: color),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(12, compact ? 8 : 10, 10, compact ? 8 : 10),
+        ? _range(shift.start, shift.end)
+        : seg.map((p) => _range(p.start, p.end)).join(', ');
+    final sub = [
+      times,
+      if (trainee != null) 'w/ ${personName(trainee, short: true)}',
+    ].join(' · ');
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 230),
+      child: Material(
+        color: dragging ? c.card : c.bg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: dragging ? color : c.line.withValues(alpha: 0.8),
+          ),
+        ),
+        elevation: dragging ? 8 : 0,
+        shadowColor: Colors.black,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 5, 10, 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 4,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Flexible(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        personName(user),
+                        personName(user, short: true),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 14.5,
+                          fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: c.title,
                         ),
                       ),
-                      const SizedBox(height: 2),
                       Text(
-                        [
-                          times,
-                          if (!compact && user?.title != null) user!.title!,
-                        ].join('  ·  '),
+                        sub,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12.5, color: c.muted),
-                      ),
-                      if (trainee != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 3),
-                          child: Row(
-                            children: [
-                              Icon(Icons.link, size: 14, color: AppTheme.teal),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  'Training ${personName(trainee, short: true)}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.teal,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: trainee != null
+                              ? AppTheme.onTint(AppTheme.teal)
+                              : c.muted,
                         ),
-                      if (training != null) TrainingBadge(label: training!),
+                      ),
                     ],
                   ),
                 ),
-              ),
-              if (onTap != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Icon(Icons.drag_indicator, size: 18, color: c.muted),
-                ),
-            ],
+                if (training != null) ...[
+                  const SizedBox(width: 5),
+                  Tooltip(
+                    message: training!,
+                    child: Icon(Icons.school, size: 15, color: AppTheme.teal),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -773,7 +980,8 @@ class _PersonChip extends StatelessWidget {
   }
 }
 
-/// People on a position through the day (green = covered).
+/// People on a position through the day (green = covered), with a marker
+/// at the hour being looked at.
 class _Coverage extends StatelessWidget {
   const _Coverage({
     required this.coverage,
@@ -791,51 +999,35 @@ class _Coverage extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = MColors(context);
     final empty = c.line.withValues(alpha: 0.4);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: SizedBox(
-            height: 7,
-            child: LayoutBuilder(
-              builder: (context, box) => Stack(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3),
+      child: SizedBox(
+        height: 5,
+        child: LayoutBuilder(
+          builder: (context, box) => Stack(
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      for (final n in coverage)
-                        Expanded(
-                          child: Container(
-                            margin: const EdgeInsets.only(right: 1),
-                            color: n == 0 ? empty : AppTheme.green,
-                          ),
-                        ),
-                    ],
-                  ),
-                  if (end > start)
-                    Positioned(
-                      left: (box.maxWidth * (marker - start) / (end - start))
-                          .clamp(0.0, box.maxWidth - 2)
-                          .toDouble(),
-                      width: 2,
-                      top: 0,
-                      bottom: 0,
-                      child: Container(color: c.title),
+                  for (final n in coverage)
+                    Expanded(
+                      child: Container(color: n == 0 ? empty : AppTheme.green),
                     ),
                 ],
               ),
-            ),
+              if (end > start)
+                Positioned(
+                  left: (box.maxWidth * (marker - start) / (end - start))
+                      .clamp(0.0, box.maxWidth - 2)
+                      .toDouble(),
+                  width: 2,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(color: c.title),
+                ),
+            ],
           ),
         ),
-        const SizedBox(height: 3),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(hourLabel(start), style: TextStyle(fontSize: 10, color: c.muted)),
-            Text(hourLabel(end), style: TextStyle(fontSize: 10, color: c.muted)),
-          ],
-        ),
-      ],
+      ),
     );
   }
 }

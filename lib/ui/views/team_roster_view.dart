@@ -1,10 +1,10 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/app_providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_model.dart';
-import 'settings_view.dart';
 import '../../models/store_settings_model.dart';
 import '../widgets/multi_select_field.dart';
 import '../widgets/scroll_table.dart';
@@ -22,6 +22,7 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
   List<String> _filterWorkingTime = [];
   List<String> _filterPosition = [];
   List<String> _filterDesignation = [];
+  bool _showFilters = false;
 
   /// By default former team members (last day passed) are hidden.
   static const _defaultStatus = ['Active', 'Leaving'];
@@ -62,13 +63,14 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
     final sortState = ref.watch(rosterSortProvider);
     return Expanded(
       flex: flex,
-      child: Align(
-        alignment: Alignment.centerLeft,
+      child: Material(
+        color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
           onTap: () => _onHeaderTap(text),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+          child: Container(
+            height: 36,
+            padding: const EdgeInsets.only(right: 8.0),
+            alignment: Alignment.centerLeft,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -123,6 +125,13 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAvgShiftsCell(UserModel user, int flex) {
+    return Expanded(
+      flex: flex,
+      child: _RosterShiftAdjuster(user: user),
     );
   }
 
@@ -365,101 +374,240 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
         _filterWorkingTime.isNotEmpty ||
         _filterStatus.join(',') != _defaultStatus.join(',');
 
-    return Container(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: TextField(
-              controller: _searchController,
-              style: TextStyle(
-                color: Theme.of(context).textTheme.bodyLarge?.color,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search team members...',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Theme.of(context).cardColor,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
+    int activeDropdownFilterCount = 0;
+    if (_filterTitle.isNotEmpty) activeDropdownFilterCount++;
+    if (_filterPosition.isNotEmpty) activeDropdownFilterCount++;
+    if (_filterDesignation.isNotEmpty) activeDropdownFilterCount++;
+    if (_filterWorkingTime.isNotEmpty) activeDropdownFilterCount++;
+    if (_filterStatus.toSet().difference(_defaultStatus.toSet()).isNotEmpty ||
+        _defaultStatus.toSet().difference(_filterStatus.toSet()).isNotEmpty) {
+      activeDropdownFilterCount++;
+    }
+
+    const double controlHeight = 44.0;
+
+    final addButton = SizedBox(
+      height: controlHeight,
+      child: ElevatedButton.icon(
+        onPressed: () => _showAddMemberDialog(context, ref),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF0F4C75),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          elevation: 0,
+        ),
+        icon: const Icon(Icons.person_add_rounded, size: 18),
+        label: const Text(
+          'Add Team Member',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+      ),
+    );
+
+    final filterButton = SizedBox(
+      height: controlHeight,
+      child: ElevatedButton.icon(
+        onPressed: () {
+          setState(() {
+            _showFilters = !_showFilters;
+          });
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _showFilters
+              ? const Color(0xFF0F4C75).withValues(alpha: 0.12)
+              : Theme.of(context).cardColor,
+          foregroundColor: _showFilters
+              ? const Color(0xFF0F4C75)
+              : Theme.of(context).textTheme.bodyLarge?.color,
+          elevation: 0,
+          side: BorderSide(
+            color: _showFilters
+                ? const Color(0xFF0F4C75)
+                : Theme.of(context).dividerColor.withValues(alpha: 0.3),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        icon: Icon(
+          Icons.filter_list_rounded,
+          size: 18,
+          color: _showFilters
+              ? const Color(0xFF0F4C75)
+              : Theme.of(context).textTheme.bodyLarge?.color,
+        ),
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Filter',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            if (activeDropdownFilterCount > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F4C75),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                contentPadding: EdgeInsets.zero,
+                child: Text(
+                  '$activeDropdownFilterCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-              onChanged: (val) {
-                setState(() {
-                  _searchQuery = val;
-                });
-              },
-            ),
+            ],
+          ],
+        ),
+      ),
+    );
+
+    final searchField = SizedBox(
+      height: controlHeight,
+      child: TextField(
+        controller: _searchController,
+        textAlignVertical: TextAlignVertical.center,
+        style: TextStyle(
+          color: Theme.of(context).textTheme.bodyLarge?.color,
+          fontSize: 14,
+        ),
+        decoration: InputDecoration(
+          hintText: 'Search team members...',
+          hintStyle: const TextStyle(fontSize: 14),
+          prefixIcon: const Icon(Icons.search, size: 20),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 40,
+            minHeight: 40,
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            flex: 1,
-            child: MultiSelectFilter(
-              label: 'Title',
-              options: uniqueTitles,
-              selected: _filterTitle,
-              onChanged: (v) => setState(() => _filterTitle = v),
-            ),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  splashRadius: 16,
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchQuery = '';
+                    });
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: Theme.of(context).cardColor,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 1,
-            child: MultiSelectFilter(
-              label: 'Position',
-              options: uniquePositions,
-              selected: _filterPosition,
-              onChanged: (v) => setState(() => _filterPosition = v),
-            ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          isDense: true,
+        ),
+        onChanged: (val) {
+          setState(() {
+            _searchQuery = val;
+          });
+        },
+      ),
+    );
+
+    return Container(
+      // Matches the gap under the table header (6 cell + 8 table gap) so the
+      // header text has equal space above and below.
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: searchField),
+              const SizedBox(width: 12),
+              addButton,
+              const SizedBox(width: 12),
+              filterButton,
+            ],
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 1,
-            child: MultiSelectFilter(
-              label: 'Designation',
-              options: uniqueDesignations,
-              selected: _filterDesignation,
-              onChanged: (v) => setState(() => _filterDesignation = v),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 1,
-            child: MultiSelectFilter(
-              label: 'Working Time',
-              options: uniqueWorkingTimes,
-              selected: _filterWorkingTime,
-              onChanged: (v) => setState(() => _filterWorkingTime = v),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 1,
-            child: MultiSelectFilter(
-              label: 'Status',
-              options: uniqueStatuses,
-              selected: _filterStatus,
-              onChanged: (v) => setState(() => _filterStatus = v),
-            ),
-          ),
-          if (hasActiveFilters) ...[
-            const SizedBox(width: 16),
-            IconButton(
-              icon: const Icon(Icons.filter_alt_off),
-              color: AppTheme.primaryRed,
-              tooltip: 'Clear Filters',
-              onPressed: () {
-                setState(() {
-                  _searchController.clear();
-                  _searchQuery = '';
-                  _filterTitle = [];
-                  _filterPosition = [];
-                  _filterDesignation = [];
-                  _filterWorkingTime = [];
-                  _filterStatus = [..._defaultStatus];
-                });
+          if (_showFilters) ...[
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, box) {
+                final filterItems = [
+                  MultiSelectFilter(
+                    label: 'Title',
+                    options: uniqueTitles,
+                    selected: _filterTitle,
+                    onChanged: (v) => setState(() => _filterTitle = v),
+                  ),
+                  MultiSelectFilter(
+                    label: 'Position',
+                    options: uniquePositions,
+                    selected: _filterPosition,
+                    onChanged: (v) => setState(() => _filterPosition = v),
+                  ),
+                  MultiSelectFilter(
+                    label: 'Designation',
+                    options: uniqueDesignations,
+                    selected: _filterDesignation,
+                    onChanged: (v) => setState(() => _filterDesignation = v),
+                  ),
+                  MultiSelectFilter(
+                    label: 'Working Time',
+                    options: uniqueWorkingTimes,
+                    selected: _filterWorkingTime,
+                    onChanged: (v) => setState(() => _filterWorkingTime = v),
+                  ),
+                  MultiSelectFilter(
+                    label: 'Status',
+                    options: uniqueStatuses,
+                    selected: _filterStatus,
+                    onChanged: (v) => setState(() => _filterStatus = v),
+                  ),
+                ];
+
+                final clearButton = IconButton(
+                  icon: const Icon(Icons.filter_alt_off),
+                  color: AppTheme.primaryRed,
+                  tooltip: 'Clear Filters',
+                  onPressed: () {
+                    setState(() {
+                      _searchController.clear();
+                      _searchQuery = '';
+                      _filterTitle = [];
+                      _filterPosition = [];
+                      _filterDesignation = [];
+                      _filterWorkingTime = [];
+                      _filterStatus = [..._defaultStatus];
+                    });
+                  },
+                );
+
+                // Filters share the full width evenly; once each would be
+                // narrower than 140 the row scrolls sideways instead.
+                const gap = 8.0;
+                const minFilterWidth = 140.0;
+                final clearWidth = hasActiveFilters ? gap + 48.0 : 0.0;
+                final filterWidth = max(
+                  minFilterWidth,
+                  (box.maxWidth - gap * (filterItems.length - 1) - clearWidth) /
+                      filterItems.length,
+                );
+
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (int i = 0; i < filterItems.length; i++) ...[
+                        if (i > 0) const SizedBox(width: gap),
+                        SizedBox(width: filterWidth, child: filterItems[i]),
+                      ],
+                      if (hasActiveFilters) ...[
+                        const SizedBox(width: gap),
+                        SizedBox(width: 48, child: clearButton),
+                      ],
+                    ],
+                  ),
+                );
               },
             ),
           ],
@@ -477,13 +625,6 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddMemberDialog(context, ref),
-        backgroundColor: AppTheme.primaryRed,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.person_add),
-        label: const Text('New Team Member'),
-      ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: sortedUsersAsync.when(
@@ -547,6 +688,17 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
               isLoadingSettings = true;
             }
             final allStores = allStoresAsync.valueOrNull ?? [];
+            final currentUser = ref.watch(currentUserProvider);
+            final ownedStoresList =
+                (currentUser?['owned_stores'] as List?)
+                    ?.map((e) => e.toString())
+                    .toList() ??
+                [];
+            final visibleStores = ownedStoresList.isNotEmpty
+                ? allStores
+                      .where((s) => ownedStoresList.contains(s['id']))
+                      .toList()
+                : allStores;
 
             if (currentStoreId != null) {
               if (settingsAsync.isLoading) isLoadingSettings = true;
@@ -556,7 +708,7 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
                     settings.tags.any((t) => t.mgrPermit);
               }
             } else {
-              for (final store in allStores) {
+              for (final store in visibleStores) {
                 final sid = store['id'] as String;
                 final asyncStoreSettings = ref.watch(
                   specificStoreSettingsProvider(sid),
@@ -603,7 +755,15 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
               filteredUsers.sort((a, b) {
                 String getChecklistName(UserModel user) {
                   final active = activeChecklistsFor(user, settingsFor(user));
-                  return active.isEmpty ? '' : active.first.name;
+                  if (active.isEmpty) return '';
+                  final raw = active.first.name;
+                  final clean = raw
+                      .replaceAll(
+                        RegExp(r'\bchecklist\b', caseSensitive: false),
+                        '',
+                      )
+                      .trim();
+                  return clean.isNotEmpty ? clean : (user.title ?? raw);
                 }
 
                 final aChecklist = getChecklistName(a).toLowerCase();
@@ -642,10 +802,7 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
                           : 1850,
                       header: // Header row
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16.0,
-                          vertical: 8.0,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
                         child: Row(
                           children: [
                             _buildHeaderCell(context, 'Name', 8),
@@ -690,7 +847,7 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
                           return InkWell(
                             onTap: () {
                               if (user.id != null) {
-                                context.go('/member/${user.id}');
+                                context.go('/member/${user.id}?from=/');
                               }
                             },
                             borderRadius: BorderRadius.circular(12),
@@ -741,16 +898,38 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
                                               (user.completedTasks ?? [])
                                                   .map((t) => t.trim())
                                                   .toSet();
-                                          final completedCount = userChecklist
-                                              .items
+                                          final applicable = userChecklist
+                                              .tasksForPosition(user.position);
+                                          final completedCount = applicable
                                               .where(
-                                                (i) => done.contains(i.trim()),
+                                                (i) => done.contains(
+                                                  i.text.trim(),
+                                                ),
                                               )
                                               .length;
-                                          final totalCount =
-                                              userChecklist.items.length;
+                                          final totalCount = applicable.length;
                                           final extraCount =
                                               activeChecklists.length - 1;
+
+                                          String checklistTitle = userChecklist
+                                              .name
+                                              .replaceAll(
+                                                RegExp(
+                                                  r'\bchecklist\b',
+                                                  caseSensitive: false,
+                                                ),
+                                                '',
+                                              )
+                                              .trim();
+                                          if (checklistTitle.isEmpty) {
+                                            checklistTitle =
+                                                (user.title != null &&
+                                                    user.title!
+                                                        .trim()
+                                                        .isNotEmpty)
+                                                ? user.title!.trim()
+                                                : userChecklist.name;
+                                          }
 
                                           return Expanded(
                                             flex: 10,
@@ -786,7 +965,7 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
                                                     children: [
                                                       Flexible(
                                                         child: Text(
-                                                          '${userChecklist.name}',
+                                                          checklistTitle,
                                                           style: TextStyle(
                                                             color: color,
                                                             fontSize: 12,
@@ -851,10 +1030,10 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
                                             .firstOrNull;
 
                                         if (titleConfig != null &&
-                                            titleConfig.color != null) {
+                                            titleConfig.color.isNotEmpty) {
                                           titleColor =
                                               AppTheme.getColorFromName(
-                                                titleConfig.color!,
+                                                titleConfig.color,
                                               );
                                         }
                                       }
@@ -888,11 +1067,7 @@ class _TeamRosterViewState extends ConsumerState<TeamRosterView> {
                                     user.workingTime ?? '',
                                     8,
                                   ),
-                                  _buildDataCell(
-                                    context,
-                                    user.avgShifts ?? '',
-                                    6,
-                                  ),
+                                  _buildAvgShiftsCell(user, 6),
                                   _buildDataCell(
                                     context,
                                     user.payRate != null
@@ -997,26 +1172,67 @@ class _AddMemberDialog extends ConsumerStatefulWidget {
 
 class _AddMemberDialogState extends ConsumerState<_AddMemberDialog> {
   final _formKey = GlobalKey<FormState>();
+
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
-  final _positionController = TextEditingController();
-  final _designationController = TextEditingController();
-  final _workingTimeController = TextEditingController();
-  final _titleController = TextEditingController();
-  List<String> _tags = [];
-  final _storeController = TextEditingController();
+  final _preferredNameController = TextEditingController();
+  bool _showPreferredName = false;
+
+  String? _selectedTitle;
+  DateTime _startDate = DateTime.now();
+  final _startDateController = TextEditingController();
+
+  String? _selectedPosition;
+  String? _selectedDesignation;
+  String? _selectedWorkingTime;
+  List<String> _selectedTags = [];
+
+  final _avgShiftsController = TextEditingController();
+  final _payRateController = TextEditingController();
+  DateTime? _foodPermitDate;
+  final _foodPermitController = TextEditingController();
+
+  final _generalNotesController = TextEditingController();
+  final _hiringNotesController = TextEditingController();
+
   bool _isLoading = false;
+  bool _initializedDefaults = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startDateController.text = _formatDate(_startDate);
+  }
 
   @override
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
-    _positionController.dispose();
-    _designationController.dispose();
-    _workingTimeController.dispose();
-    _titleController.dispose();
-    _storeController.dispose();
+    _preferredNameController.dispose();
+    _startDateController.dispose();
+    _avgShiftsController.dispose();
+    _payRateController.dispose();
+    _foodPermitController.dispose();
+    _generalNotesController.dispose();
+    _hiringNotesController.dispose();
     super.dispose();
+  }
+
+  String _formatDate(DateTime d) =>
+      '${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}/${d.year}';
+
+  DateTime? _parseDate(String s) {
+    final trimmed = s.trim();
+    final parts = trimmed.split('/');
+    if (parts.length == 3) {
+      final m = int.tryParse(parts[0]);
+      final d = int.tryParse(parts[1]);
+      final y = int.tryParse(parts[2]);
+      if (m != null && d != null && y != null) {
+        return DateTime(y, m, d);
+      }
+    }
+    return DateTime.tryParse(trimmed);
   }
 
   Future<void> _submit() async {
@@ -1027,16 +1243,62 @@ class _AddMemberDialogState extends ConsumerState<_AddMemberDialog> {
     try {
       final firestoreService = ref.read(firestoreServiceProvider);
       final currentStoreId = ref.read(currentStoreIdProvider);
+      final currentUser = ref.read(currentUserProvider);
+      final ownedStoresList =
+          (currentUser?['owned_stores'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
+      final storeId =
+          currentStoreId ??
+          (ownedStoresList.isNotEmpty
+              ? ownedStoresList.first
+              : (ref
+                            .read(allStoresStreamProvider)
+                            .valueOrNull
+                            ?.firstOrNull?['id']
+                        as String? ??
+                    'QYfhsc0dBHLBbgOflHsA'));
+
+      DateTime? foodPermit;
+      if (_foodPermitController.text.trim().isNotEmpty) {
+        foodPermit =
+            _foodPermitDate ?? _parseDate(_foodPermitController.text.trim());
+      }
+
+      double? payRate;
+      final payText = _payRateController.text.replaceAll(r'$', '').trim();
+      if (payText.isNotEmpty) {
+        payRate = double.tryParse(payText);
+      }
+
+      final parsedStartDate =
+          _parseDate(_startDateController.text) ?? _startDate;
 
       final newUser = UserModel(
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
-        position: _positionController.text.trim(),
-        designation: _designationController.text.trim(),
-        workingTime: _workingTimeController.text.trim(),
-        title: _titleController.text.trim(),
-        additionalTags: _tags,
-        store: currentStoreId == null ? _storeController.text.trim() : null,
+        preferredName: _preferredNameController.text.trim().isEmpty
+            ? null
+            : _preferredNameController.text.trim(),
+        title: _selectedTitle,
+        startDate: parsedStartDate,
+        position: _selectedPosition,
+        designation: _selectedDesignation,
+        workingTime: _selectedWorkingTime,
+        additionalTags: _selectedTags,
+        avgShifts: _avgShiftsController.text.trim().isEmpty
+            ? null
+            : _avgShiftsController.text.trim(),
+        payRate: payRate,
+        foodHandlersExpiration: foodPermit,
+        generalNotes: _generalNotesController.text.trim().isEmpty
+            ? null
+            : _generalNotesController.text.trim(),
+        hiringNotes: _hiringNotesController.text.trim().isEmpty
+            ? null
+            : _hiringNotesController.text.trim(),
+        store: storeId,
         status: 'Active',
       );
 
@@ -1044,6 +1306,13 @@ class _AddMemberDialogState extends ConsumerState<_AddMemberDialog> {
 
       if (mounted) {
         Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Added ${newUser.firstName} ${newUser.lastName} to team',
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -1058,241 +1327,829 @@ class _AddMemberDialogState extends ConsumerState<_AddMemberDialog> {
     }
   }
 
-  Widget _buildSettingsDropdown({
-    required BuildContext context,
-    required String label,
-    required String? value,
-    required List<String> options,
-    required ValueChanged<String?> onChanged,
-  }) {
-    if (options.isEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildFieldLabel(String text, {bool isRequired = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            label,
+            text,
             style: TextStyle(
-              color: Theme.of(context).textTheme.bodyLarge?.color,
-              fontSize: 12,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+              color:
+                  Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.color?.withValues(alpha: 0.85) ??
+                  Colors.grey.shade600,
             ),
           ),
-          const SizedBox(height: 4),
-          ElevatedButton.icon(
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => Dialog(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const SizedBox(
-                    width: 800,
-                    height: 600,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.all(Radius.circular(16)),
-                      child: SettingsView(),
-                    ),
-                  ),
-                ),
-              );
-            },
-            icon: const Icon(Icons.settings),
-            label: Text('Add $label in Settings'),
-          ),
+          if (isRequired) ...[
+            const SizedBox(width: 3),
+            const Text(
+              '*',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F4C75),
+              ),
+            ),
+          ],
         ],
-      );
-    }
+      ),
+    );
+  }
 
-    final uniqueOptions = options.toSet().toList();
+  Widget _buildTextInput({
+    required TextEditingController controller,
+    String? hintText,
+    TextInputType? keyboardType,
+    int minLines = 1,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+    Widget? suffixIcon,
+    VoidCallback? onTap,
+    bool readOnly = false,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      minLines: minLines,
+      maxLines: maxLines,
+      validator: validator,
+      readOnly: readOnly,
+      onTap: onTap,
+      style: TextStyle(
+        fontSize: 14,
+        color: Theme.of(context).textTheme.bodyLarge?.color,
+      ),
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+        suffixIcon: suffixIcon,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+        filled: true,
+        fillColor: Theme.of(context).scaffoldBackgroundColor,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Theme.of(context).dividerColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Theme.of(context).dividerColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFF0F4C75), width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: AppTheme.primaryRed),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDropdown({
+    required String? value,
+    required List<String> options,
+    required String placeholder,
+    required ValueChanged<String?> onChanged,
+    String? Function(String?)? validator,
+  }) {
     return DropdownButtonFormField<String>(
-      initialValue: uniqueOptions.contains(value)
-          ? value
-          : (uniqueOptions.isNotEmpty ? uniqueOptions.first : null),
+      value: options.contains(value) ? value : null,
       onChanged: onChanged,
-      items: uniqueOptions
-          .map((opt) => DropdownMenuItem(value: opt, child: Text(opt)))
-          .toList(),
-      decoration: InputDecoration(labelText: label),
-      style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+      validator: validator,
+      isExpanded: true,
+      icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: Colors.grey),
       dropdownColor: Theme.of(context).cardColor,
+      style: TextStyle(
+        fontSize: 14,
+        color: Theme.of(context).textTheme.bodyLarge?.color,
+      ),
+      hint: Text(
+        placeholder,
+        style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+        overflow: TextOverflow.ellipsis,
+      ),
+      decoration: InputDecoration(
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 11,
+        ),
+        filled: true,
+        fillColor: Theme.of(context).scaffoldBackgroundColor,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Theme.of(context).dividerColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Theme.of(context).dividerColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFF0F4C75), width: 1.5),
+        ),
+      ),
+      items: options.map((opt) {
+        return DropdownMenuItem<String>(
+          value: opt,
+          child: Text(opt, overflow: TextOverflow.ellipsis),
+        );
+      }).toList(),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final settings =
-        ref.watch(storeSettingsProvider).value ?? StoreSettingsModel();
-    final currentStoreId = ref.watch(currentStoreIdProvider);
+        ref.watch(storeSettingsProvider).value ?? const StoreSettingsModel();
 
-    return AlertDialog(
-      title: Text(
-        'New Team Member',
-        style: TextStyle(
-          color: Theme.of(context).textTheme.titleLarge?.color,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      backgroundColor: Theme.of(context).cardColor,
-      content: SizedBox(
-        width: 400,
+    if (!_initializedDefaults) {
+      _initializedDefaults = true;
+      if (settings.titles.isNotEmpty) {
+        _selectedTitle = settings.titles.first.name;
+      }
+    }
+
+    final theme = Theme.of(context);
+
+    return Dialog(
+      backgroundColor: theme.cardColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 920),
         child: Form(
           key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: _firstNameController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyLarge?.color,
-                  ),
-                  decoration: const InputDecoration(labelText: 'First Name'),
-                  validator: (val) =>
-                      val == null || val.trim().isEmpty ? 'Required' : null,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 16, 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Add Team Member',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: theme.textTheme.titleLarge?.color,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      color: Colors.grey,
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _lastNameController,
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyLarge?.color,
-                  ),
-                  decoration: const InputDecoration(labelText: 'Last Name'),
-                  validator: (val) =>
-                      val == null || val.trim().isEmpty ? 'Required' : null,
-                ),
-                const SizedBox(height: 16),
-                if (currentStoreId == null) ...[
-                  Builder(
-                    builder: (context) {
-                      final allStoresAsync = ref.watch(allStoresStreamProvider);
-                      return allStoresAsync.when(
-                        data: (stores) {
-                          if (stores.isEmpty) return const SizedBox.shrink();
+              ),
+              Divider(height: 1, thickness: 1, color: theme.dividerColor),
 
-                          // Ensure _storeController.text is valid, else default to first store
-                          if (!stores.any(
-                            (s) => s['id'] == _storeController.text,
-                          )) {
-                            _storeController.text =
-                                stores.first['id'] as String;
-                          }
+              // Scrollable content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: LayoutBuilder(
+                    builder: (context, box) {
+                      final isWide = box.maxWidth >= 680;
 
-                          return DropdownButtonFormField<String>(
-                            initialValue: _storeController.text,
-                            onChanged: (val) {
-                              if (val != null) _storeController.text = val;
-                            },
-                            items: stores.map((s) {
-                              return DropdownMenuItem(
-                                value: s['id'] as String,
-                                child: Text(
-                                  s['name'] as String? ?? 'Untitled Store',
+                      Widget col(Widget child, {int flex = 1}) =>
+                          Expanded(flex: flex, child: child);
+
+                      // Row 1: First Name (+ preferred name pill), Last Name, Title, Start Date
+                      final firstNameField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('FIRST NAME', isRequired: true),
+                          _buildTextInput(
+                            controller: _firstNameController,
+                            validator: (val) =>
+                                val == null || val.trim().isEmpty
+                                ? 'First name is required'
+                                : null,
+                          ),
+                          if (!_showPreferredName &&
+                              _preferredNameController.text.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: InkWell(
+                                  onTap: () =>
+                                      setState(() => _showPreferredName = true),
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(
+                                        0xFF0F4C75,
+                                      ).withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: const Color(
+                                          0xFF0F4C75,
+                                        ).withValues(alpha: 0.35),
+                                      ),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.edit_outlined,
+                                          size: 13,
+                                          color: Color(0xFF0F4C75),
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Preferred Name?',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF0F4C75),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
+                              ),
+                            )
+                          else
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      _buildFieldLabel('PREFERRED NAME'),
+                                      InkWell(
+                                        onTap: () {
+                                          setState(() {
+                                            _preferredNameController.clear();
+                                            _showPreferredName = false;
+                                          });
+                                        },
+                                        child: Text(
+                                          'Hide',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey.shade500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  _buildTextInput(
+                                    controller: _preferredNameController,
+                                    hintText: 'e.g. Alex',
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      );
+
+                      final lastNameField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('LAST NAME', isRequired: true),
+                          _buildTextInput(
+                            controller: _lastNameController,
+                            validator: (val) =>
+                                val == null || val.trim().isEmpty
+                                ? 'Last name is required'
+                                : null,
+                          ),
+                        ],
+                      );
+
+                      final titleField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('TITLE'),
+                          _buildDropdown(
+                            value: _selectedTitle,
+                            options: settings.titles
+                                .map((e) => e.name)
+                                .toList(),
+                            placeholder: '-- Select Title --',
+                            onChanged: (val) =>
+                                setState(() => _selectedTitle = val),
+                          ),
+                        ],
+                      );
+
+                      final startDateField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('START DATE'),
+                          _buildTextInput(
+                            controller: _startDateController,
+                            readOnly: true,
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _startDate,
+                                firstDate: DateTime(2000),
+                                lastDate: DateTime(2100),
                               );
-                            }).toList(),
-                            decoration: const InputDecoration(
-                              labelText: 'Store',
+                              if (picked != null) {
+                                setState(() {
+                                  _startDate = picked;
+                                  _startDateController.text = _formatDate(
+                                    picked,
+                                  );
+                                });
+                              }
+                            },
+                            suffixIcon: IconButton(
+                              icon: const Icon(
+                                Icons.calendar_today_outlined,
+                                size: 18,
+                                color: Colors.grey,
+                              ),
+                              onPressed: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: _startDate,
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime(2100),
+                                );
+                                if (picked != null) {
+                                  setState(() {
+                                    _startDate = picked;
+                                    _startDateController.text = _formatDate(
+                                      picked,
+                                    );
+                                  });
+                                }
+                              },
                             ),
-                            style: TextStyle(
-                              color: Theme.of(
+                          ),
+                        ],
+                      );
+
+                      // Row 2: Position, Designation, Working Time, Additional Tags
+                      final positionField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('POSITION', isRequired: true),
+                          _buildDropdown(
+                            value: _selectedPosition,
+                            options: settings.positions,
+                            placeholder: '-- Select Position --',
+                            validator: (val) =>
+                                settings.positions.isNotEmpty &&
+                                    (val == null || val.isEmpty)
+                                ? 'Position is required'
+                                : null,
+                            onChanged: (val) =>
+                                setState(() => _selectedPosition = val),
+                          ),
+                        ],
+                      );
+
+                      final designationField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('DESIGNATION', isRequired: true),
+                          _buildDropdown(
+                            value: _selectedDesignation,
+                            options: settings.designations,
+                            placeholder: '-- Select Designation --',
+                            validator: (val) =>
+                                settings.designations.isNotEmpty &&
+                                    (val == null || val.isEmpty)
+                                ? 'Designation is required'
+                                : null,
+                            onChanged: (val) =>
+                                setState(() => _selectedDesignation = val),
+                          ),
+                        ],
+                      );
+
+                      final workingTimeField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('WORKING TIME', isRequired: true),
+                          _buildDropdown(
+                            value: _selectedWorkingTime,
+                            options: settings.workingTimes,
+                            placeholder: '-- Select Working Time --',
+                            validator: (val) =>
+                                settings.workingTimes.isNotEmpty &&
+                                    (val == null || val.isEmpty)
+                                ? 'Working time is required'
+                                : null,
+                            onChanged: (val) =>
+                                setState(() => _selectedWorkingTime = val),
+                          ),
+                        ],
+                      );
+
+                      final tagsField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('ADDITIONAL TAGS'),
+                          MultiSelectField(
+                            options: settings.tags.map((e) => e.name).toList(),
+                            selected: _selectedTags,
+                            emptyText: '-- Select Additional Tags --',
+                            decoration: InputDecoration(
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 11,
+                              ),
+                              filled: true,
+                              fillColor: Theme.of(
                                 context,
-                              ).textTheme.bodyLarge?.color,
+                              ).scaffoldBackgroundColor,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(
+                                  color: Theme.of(context).dividerColor,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(
+                                  color: Theme.of(context).dividerColor,
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF0F4C75),
+                                  width: 1.5,
+                                ),
+                              ),
                             ),
-                            dropdownColor: Theme.of(context).cardColor,
-                          );
-                        },
-                        loading: () => const CircularProgressIndicator(),
-                        error: (e, st) => Text('Error loading stores: $e'),
+                            onChanged: (tags) =>
+                                setState(() => _selectedTags = tags),
+                          ),
+                        ],
+                      );
+
+                      // Row 3: Avg Shifts / Wk, Pay ($ / Hr), Food Permit Exp.
+                      final avgShiftsField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('AVG SHIFTS / WK'),
+                          _buildTextInput(
+                            controller: _avgShiftsController,
+                            hintText: 'e.g. 4',
+                            keyboardType: TextInputType.number,
+                          ),
+                        ],
+                      );
+
+                      final payRateField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('PAY (\$ / HR)'),
+                          _buildTextInput(
+                            controller: _payRateController,
+                            hintText: 'e.g. \$15.00',
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                          ),
+                        ],
+                      );
+
+                      final foodPermitField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('FOOD PERMIT EXP.'),
+                          _buildTextInput(
+                            controller: _foodPermitController,
+                            hintText: 'mm/dd/yyyy',
+                            readOnly: true,
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _foodPermitDate ?? DateTime.now(),
+                                firstDate: DateTime(2000),
+                                lastDate: DateTime(2100),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  _foodPermitDate = picked;
+                                  _foodPermitController.text = _formatDate(
+                                    picked,
+                                  );
+                                });
+                              }
+                            },
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_foodPermitDate != null)
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.clear,
+                                      size: 16,
+                                      color: Colors.grey,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _foodPermitDate = null;
+                                        _foodPermitController.clear();
+                                      });
+                                    },
+                                  ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.calendar_today_outlined,
+                                    size: 18,
+                                    color: Colors.grey,
+                                  ),
+                                  onPressed: () async {
+                                    final picked = await showDatePicker(
+                                      context: context,
+                                      initialDate:
+                                          _foodPermitDate ?? DateTime.now(),
+                                      firstDate: DateTime(2000),
+                                      lastDate: DateTime(2100),
+                                    );
+                                    if (picked != null) {
+                                      setState(() {
+                                        _foodPermitDate = picked;
+                                        _foodPermitController.text =
+                                            _formatDate(picked);
+                                      });
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+
+                      // Row 4: General Notes, Hiring Notes
+                      final generalNotesField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('GENERAL NOTES'),
+                          _buildTextInput(
+                            controller: _generalNotesController,
+                            hintText: 'Member notes...',
+                            minLines: 3,
+                            maxLines: 4,
+                          ),
+                        ],
+                      );
+
+                      final hiringNotesField = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('HIRING NOTES'),
+                          _buildTextInput(
+                            controller: _hiringNotesController,
+                            hintText: 'Hiring notes, availability...',
+                            minLines: 3,
+                            maxLines: 4,
+                          ),
+                        ],
+                      );
+
+                      if (isWide) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                col(firstNameField),
+                                const SizedBox(width: 16),
+                                col(lastNameField),
+                                const SizedBox(width: 16),
+                                col(titleField),
+                                const SizedBox(width: 16),
+                                col(startDateField),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                col(positionField),
+                                const SizedBox(width: 16),
+                                col(designationField),
+                                const SizedBox(width: 16),
+                                col(workingTimeField),
+                                const SizedBox(width: 16),
+                                col(tagsField),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                col(avgShiftsField),
+                                const SizedBox(width: 16),
+                                col(payRateField),
+                                const SizedBox(width: 16),
+                                col(foodPermitField),
+                                const SizedBox(width: 16),
+                                col(const SizedBox.shrink()),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                col(generalNotesField),
+                                const SizedBox(width: 16),
+                                col(hiringNotesField),
+                              ],
+                            ),
+                          ],
+                        );
+                      }
+
+                      // Responsive 2-column or 1-column layout for narrower dialogs
+                      final isTablet = box.maxWidth >= 460;
+                      if (isTablet) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                col(firstNameField),
+                                const SizedBox(width: 14),
+                                col(lastNameField),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                col(titleField),
+                                const SizedBox(width: 14),
+                                col(startDateField),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                col(positionField),
+                                const SizedBox(width: 14),
+                                col(designationField),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                col(workingTimeField),
+                                const SizedBox(width: 14),
+                                col(tagsField),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                col(avgShiftsField),
+                                const SizedBox(width: 14),
+                                col(payRateField),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            foodPermitField,
+                            const SizedBox(height: 16),
+                            generalNotesField,
+                            const SizedBox(height: 16),
+                            hiringNotesField,
+                          ],
+                        );
+                      }
+
+                      // Narrow 1-column layout
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          firstNameField,
+                          const SizedBox(height: 14),
+                          lastNameField,
+                          const SizedBox(height: 14),
+                          titleField,
+                          const SizedBox(height: 14),
+                          startDateField,
+                          const SizedBox(height: 14),
+                          positionField,
+                          const SizedBox(height: 14),
+                          designationField,
+                          const SizedBox(height: 14),
+                          workingTimeField,
+                          const SizedBox(height: 14),
+                          tagsField,
+                          const SizedBox(height: 14),
+                          avgShiftsField,
+                          const SizedBox(height: 14),
+                          payRateField,
+                          const SizedBox(height: 14),
+                          foodPermitField,
+                          const SizedBox(height: 14),
+                          generalNotesField,
+                          const SizedBox(height: 14),
+                          hiringNotesField,
+                        ],
                       );
                     },
                   ),
-                  const SizedBox(height: 16),
-                ],
-                _buildSettingsDropdown(
-                  context: context,
-                  label: 'Position',
-                  value: _positionController.text,
-                  options: settings.positions,
-                  onChanged: (val) {
-                    if (val != null) _positionController.text = val;
-                  },
                 ),
-                const SizedBox(height: 16),
-                _buildSettingsDropdown(
-                  context: context,
-                  label: 'Designation',
-                  value: _designationController.text,
-                  options: settings.designations,
-                  onChanged: (val) {
-                    if (val != null) _designationController.text = val;
-                  },
+              ),
+
+              // Footer
+              Divider(height: 1, thickness: 1, color: theme.dividerColor),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
                 ),
-                const SizedBox(height: 16),
-                _buildSettingsDropdown(
-                  context: context,
-                  label: 'Title',
-                  value: _titleController.text,
-                  options: settings.titles.map((e) => e.name).toList(),
-                  onChanged: (val) {
-                    if (val != null) _titleController.text = val;
-                  },
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: _isLoading
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        side: BorderSide(color: theme.dividerColor),
+                        foregroundColor: theme.textTheme.bodyLarge?.color,
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: _isLoading ? null : _submit,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F4C75),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'Save Member',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                _buildSettingsDropdown(
-                  context: context,
-                  label: 'Working Time',
-                  value: _workingTimeController.text,
-                  options: settings.workingTimes,
-                  onChanged: (val) {
-                    if (val != null) _workingTimeController.text = val;
-                  },
-                ),
-                const SizedBox(height: 16),
-                MultiSelectField(
-                  decoration: const InputDecoration(
-                    labelText: 'Additional tags',
-                  ),
-                  style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyLarge?.color,
-                    fontSize: 16,
-                  ),
-                  options: settings.tags.map((e) => e.name).toList(),
-                  selected: _tags,
-                  onChanged: (tags) => setState(() => _tags = tags),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
-          child: Text(
-            'Cancel',
-            style: TextStyle(
-              color: Theme.of(context).textTheme.bodySmall?.color,
-            ),
-          ),
-        ),
-        ElevatedButton(
-          onPressed: _isLoading ? null : _submit,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.accent,
-            foregroundColor: Colors.white,
-          ),
-          child: _isLoading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Text('Save Member'),
-        ),
-      ],
     );
   }
 }
@@ -1331,6 +2188,112 @@ List<ChecklistConfig> activeChecklistsFor(
 
   final completed = user.completedChecklists ?? const <String>[];
   return result
-      .where((c) => c.items.isNotEmpty && !completed.contains(c.id))
+      .where(
+        (c) =>
+            c.tasksForPosition(user.position).isNotEmpty &&
+            !completed.contains(c.id),
+      )
       .toList();
+}
+
+class _RosterShiftAdjuster extends ConsumerStatefulWidget {
+  final UserModel user;
+  const _RosterShiftAdjuster({required this.user});
+
+  @override
+  ConsumerState<_RosterShiftAdjuster> createState() =>
+      _RosterShiftAdjusterState();
+}
+
+class _RosterShiftAdjusterState extends ConsumerState<_RosterShiftAdjuster> {
+  bool _isHovered = false;
+  late int _count;
+
+  @override
+  void initState() {
+    super.initState();
+    _count = int.tryParse(widget.user.avgShifts ?? '0') ?? 0;
+  }
+
+  @override
+  void didUpdateWidget(covariant _RosterShiftAdjuster oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.user.avgShifts != oldWidget.user.avgShifts) {
+      _count = int.tryParse(widget.user.avgShifts ?? '0') ?? 0;
+    }
+  }
+
+  Future<void> _adjust(int delta) async {
+    final newCount = (_count + delta).clamp(0, 99);
+    if (newCount == _count) return;
+    setState(() => _count = newCount);
+    try {
+      final updatedUser = widget.user.copyWith(avgShifts: '$newCount');
+      final firestoreService = ref.read(baseFirestoreServiceProvider);
+      await firestoreService.updateUser(updatedUser);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _count = int.tryParse(widget.user.avgShifts ?? '0') ?? 0;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {},
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              '$_count',
+              style: TextStyle(
+                color: Theme.of(context).textTheme.bodyLarge?.color,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(width: 4),
+            SizedBox(
+              width: 18,
+              height: 28,
+              child: _isHovered
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        InkWell(
+                          onTap: () => _adjust(1),
+                          borderRadius: BorderRadius.circular(2),
+                          child: Icon(
+                            Icons.keyboard_arrow_up,
+                            size: 13,
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
+                          ),
+                        ),
+                        InkWell(
+                          onTap: _count > 0 ? () => _adjust(-1) : null,
+                          borderRadius: BorderRadius.circular(2),
+                          child: Icon(
+                            Icons.keyboard_arrow_down,
+                            size: 13,
+                            color: _count > 0
+                                ? Theme.of(context).textTheme.bodyLarge?.color
+                                : Theme.of(context).disabledColor,
+                          ),
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

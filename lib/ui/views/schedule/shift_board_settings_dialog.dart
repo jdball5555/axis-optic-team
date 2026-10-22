@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../../../models/schedule_models.dart';
 import 'positions_editor.dart';
+import 'shift_layout_customizer.dart';
 
 /// Shift board settings: a board for each schedule, or boards that combine
 /// schedules, and each board's ranked positions. Every change is saved
@@ -39,7 +41,8 @@ class ShiftBoardSettingsDialog extends StatefulWidget {
   });
 
   @override
-  State<ShiftBoardSettingsDialog> createState() => _ShiftBoardSettingsDialogState();
+  State<ShiftBoardSettingsDialog> createState() =>
+      _ShiftBoardSettingsDialogState();
 }
 
 class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
@@ -51,13 +54,17 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
   List<ShiftBoard> get _boards => _c.boardsFor(widget.schedules);
 
   ShiftBoard? get _board =>
-      _boards.where((b) => b.id == _selected).firstOrNull ?? _boards.firstOrNull;
+      _boards.where((b) => b.id == _selected).firstOrNull ??
+      _boards.firstOrNull;
 
   /// Every schedule's board written out, so nothing depends on the older
   /// store-wide position list any more once saved.
   ShiftConfig _materialize(ShiftConfig c) => c.copyWith(
     scheduleBoards: {
-      for (final b in c.copyWith(layout: ShiftBoardLayout.perSchedule).boardsFor(widget.schedules))
+      for (final b
+          in c
+              .copyWith(layout: ShiftBoardLayout.perSchedule)
+              .boardsFor(widget.schedules))
         b.id: b.positions,
     },
   );
@@ -68,7 +75,10 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
     if (now) {
       widget.onSave(_c);
     } else {
-      _debounce = Timer(const Duration(milliseconds: 400), () => widget.onSave(_c));
+      _debounce = Timer(
+        const Duration(milliseconds: 400),
+        () => widget.onSave(_c),
+      );
     }
   }
 
@@ -85,13 +95,17 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
     var c = _c.copyWith(layout: layout);
     if (layout == ShiftBoardLayout.custom && c.customBoards.isEmpty) {
       // Start with one board for every schedule, with their positions.
-      final perSchedule = _c.copyWith(layout: ShiftBoardLayout.perSchedule).boardsFor(widget.schedules);
+      final perSchedule = _c
+          .copyWith(layout: ShiftBoardLayout.perSchedule)
+          .boardsFor(widget.schedules);
       final seen = <String>{};
       c = c.copyWith(
         customBoards: [
           ShiftBoard(
             id: newScheduleId(),
-            name: _schedules.length > 1 ? 'All schedules' : _schedules.first.name,
+            name: _schedules.length > 1
+                ? 'All schedules'
+                : _schedules.first.name,
             scheduleIds: [for (final s in _schedules) s.id],
             positions: [
               for (final b in perSchedule)
@@ -108,27 +122,43 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
 
   void _setPositions(ShiftBoard board, List<ShiftPosition> positions) {
     if (_c.layout == ShiftBoardLayout.custom) {
-      _update(_c.copyWith(customBoards: [
-        for (final b in _c.customBoards) b.id == board.id ? b.copyWith(positions: positions) : b,
-      ]));
+      _update(
+        _c.copyWith(
+          customBoards: [
+            for (final b in _c.customBoards)
+              b.id == board.id ? b.copyWith(positions: positions) : b,
+          ],
+        ),
+      );
     } else {
-      _update(_c.copyWith(scheduleBoards: {..._c.scheduleBoards, board.id: positions}));
+      _update(
+        _c.copyWith(
+          scheduleBoards: {..._c.scheduleBoards, board.id: positions},
+        ),
+      );
     }
   }
 
   void _setCustom(ShiftBoard board, {String? name, List<String>? scheduleIds}) {
     _update(
-      _c.copyWith(customBoards: [
-        for (final b in _c.customBoards)
-          b.id == board.id ? b.copyWith(name: name, scheduleIds: scheduleIds) : b,
-      ]),
+      _c.copyWith(
+        customBoards: [
+          for (final b in _c.customBoards)
+            b.id == board.id
+                ? b.copyWith(name: name, scheduleIds: scheduleIds)
+                : b,
+        ],
+      ),
       now: name == null,
     );
   }
 
   void _addBoard() {
     final used = {for (final b in _c.customBoards) ...b.scheduleIds};
-    final free = [for (final s in _schedules) if (!used.contains(s.id)) s.id];
+    final free = [
+      for (final s in _schedules)
+        if (!used.contains(s.id)) s.id,
+    ];
     final board = ShiftBoard(
       id: newScheduleId(),
       name: 'Board ${_c.customBoards.length + 1}',
@@ -141,7 +171,12 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
   void _removeBoard(ShiftBoard board) {
     _selected = null;
     _update(
-      _c.copyWith(customBoards: [for (final b in _c.customBoards) if (b.id != board.id) b]),
+      _c.copyWith(
+        customBoards: [
+          for (final b in _c.customBoards)
+            if (b.id != board.id) b,
+        ],
+      ),
       now: true,
     );
   }
@@ -154,18 +189,27 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
     final boards = _boards;
     final board = _board;
     final onBoards = {for (final b in boards) ...b.scheduleIds};
-    final missing = [for (final s in _schedules) if (!onBoards.contains(s.id)) s.name];
+    final missing = [
+      for (final s in _schedules)
+        if (!onBoards.contains(s.id)) s.name,
+    ];
 
     return AlertDialog(
       backgroundColor: theme.cardColor,
       title: const Text('Shift board settings'),
       content: SizedBox(
         width: 560,
-        height: 600,
+        height: math.min(600.0, MediaQuery.sizeOf(context).height - 120),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Boards', style: TextStyle(fontWeight: FontWeight.bold, color: theme.textTheme.bodyLarge?.color)),
+            Text(
+              'Boards',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: theme.textTheme.bodyLarge?.color,
+              ),
+            ),
             const SizedBox(height: 6),
             SegmentedButton<ShiftBoardLayout>(
               segments: const [
@@ -221,7 +265,11 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
             ],
             const Divider(height: 24),
             if (board == null)
-              Expanded(child: Center(child: Text('No boards yet.', style: TextStyle(color: muted))))
+              Expanded(
+                child: Center(
+                  child: Text('No boards yet.', style: TextStyle(color: muted)),
+                ),
+              )
             else ...[
               if (custom) ...[
                 Row(
@@ -247,7 +295,10 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Text('Schedules on this board', style: TextStyle(fontSize: 12, color: muted)),
+                Text(
+                  'Schedules on this board',
+                  style: TextStyle(fontSize: 12, color: muted),
+                ),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 6,
@@ -256,10 +307,16 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
                     for (final s in _schedules)
                       () {
                         final elsewhere = boards
-                            .where((b) => b.id != board.id && b.scheduleIds.contains(s.id))
+                            .where(
+                              (b) =>
+                                  b.id != board.id &&
+                                  b.scheduleIds.contains(s.id),
+                            )
                             .firstOrNull;
                         return Tooltip(
-                          message: elsewhere == null ? '' : 'On ${elsewhere.name}',
+                          message: elsewhere == null
+                              ? ''
+                              : 'On ${elsewhere.name}',
                           child: FilterChip(
                             label: Text(s.name),
                             selected: board.scheduleIds.contains(s.id),
@@ -269,7 +326,10 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
                                     board,
                                     scheduleIds: [
                                       for (final x in _schedules)
-                                        if (x.id == s.id ? on : board.scheduleIds.contains(x.id)) x.id,
+                                        if (x.id == s.id
+                                            ? on
+                                            : board.scheduleIds.contains(x.id))
+                                          x.id,
                                     ],
                                   ),
                           ),
@@ -286,9 +346,43 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
                     style: TextStyle(fontSize: 12, color: muted),
                   ),
                 ),
-              Text(
-                'Positions on ${board.name.isEmpty ? 'this board' : board.name}',
-                style: TextStyle(fontWeight: FontWeight.bold, color: theme.textTheme.bodyLarge?.color),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Positions on ${board.name.isEmpty ? 'this board' : board.name}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: theme.textTheme.bodyLarge?.color,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 0,
+                      ),
+                    ),
+                    onPressed: () => showShiftLayoutCustomizer(
+                      context,
+                      config: _c,
+                      board: board,
+                      schedules: widget.schedules,
+                      onSave: (c) async {
+                        _update(c, now: true);
+                      },
+                    ),
+                    icon: const Icon(Icons.grid_view_rounded, size: 15),
+                    label: const Text(
+                      'Customize layout',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 6),
               Expanded(
@@ -303,7 +397,10 @@ class _ShiftBoardSettingsDialogState extends State<ShiftBoardSettingsDialog> {
         ),
       ),
       actions: [
-        Text('Changes save automatically', style: TextStyle(fontSize: 12, color: muted)),
+        Text(
+          'Changes save automatically',
+          style: TextStyle(fontSize: 12, color: muted),
+        ),
         const SizedBox(width: 8),
         FilledButton(
           onPressed: () => Navigator.pop(context),
